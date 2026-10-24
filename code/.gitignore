@@ -1,0 +1,11 @@
+.env
+data/*.db
+data/hoclieu/*
+!data/hoclieu/.gitkeep
+__pycache__/
+*.pyc
+.venv/
+
+.cc_sandbox/
+.env
+performance/results/

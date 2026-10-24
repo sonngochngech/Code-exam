@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thống kê lớp</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+</head>
+<body>
+
+<div class="khung">
+
+  <div class="the gon">
+    <div class="hang">
+      <div class="o">
+        <label for="mon">Lọc theo môn</label>
+        <select id="mon">
+          <option value="">Cả hai môn</option>
+          <option value="Toán">Toán</option>
+          <option value="Vật lí">Vật lí</option>
+        </select>
+      </div>
+      <button id="nut-nap">Cập nhật</button>
+      <button class="nut phu" onclick="taiFile('/api/admin/xuat/cau-hoi')">Tải dữ liệu CSV</button>
+    </div>
+  </div>
+
+  <div class="luoi luoi-3" id="o-so"></div>
+
+  <div class="the">
+    <h2>Dạng bài học sinh vướng nhiều nhất</h2>
+    <p class="mo">Dạng đứng đầu là chỗ nên dành thêm thời lượng cho tiết ôn tập
+       kế tiếp. Bấm nút bên cạnh để sinh ngay đề luyện tập ba mức cho dạng đó.</p>
+    <div id="bang-dang"></div>
+  </div>
+
+  <div class="the">
+    <h2>Học sinh hỏi đi hỏi lại cùng một chỗ</h2>
+    <p class="mo">Từ ba lần trở lên trong cùng một dạng bài. Hỏi lại nhiều lần
+       thường là dấu hiệu em chưa hiểu gốc vấn đề chứ không phải quên.</p>
+    <div id="bang-lap"></div>
+  </div>
+
+  <div class="luoi luoi-2">
+    <div class="the">
+      <h3 style="margin-top:0">Giờ học sinh hỏi bài trong ngày</h3>
+      <p class="mo">Dùng để biết nên trực hỗ trợ vào khung giờ nào.</p>
+      <div id="bieu-do-gio"></div>
+    </div>
+
+    <div class="the">
+      <h3 style="margin-top:0">Kho học liệu</h3>
+      <p class="mo">Chất lượng trả lời phụ thuộc hoàn toàn vào kho này.</p>
+      <div id="kho"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/static/common.js"></script>
+<script>
+const nd = chiGiaoVien();
+datHeThong(1);
+dungKhung("Thống kê lớp", "Hệ thống 1: AI trợ giảng");
+if (!nd) throw new Error("dung lai");
+
+const oSoEl = document.getElementById("o-so");
+const oDang = document.getElementById("bang-dang");
+
+function oSo(so, ten) {
+  return `<div class="o-so"><div class="so">${so}</div><div class="ten">${ten}</div></div>`;
+}
+
+async function nap() {
+  const mon = document.getElementById("mon").value;
+  oSoEl.innerHTML = khungXuong(1);
+  oDang.innerHTML = khungXuong(4);
+  try {
+    const t = await API.get("/api/stats/tro-giang" + (mon ? `?mon=${encodeURIComponent(mon)}` : ""));
+    veSoLieu(t);
+    veDangBai(t);
+    veHoiLap(t);
+    veBieuDoGio(t);
+  } catch (e) {
+    oSoEl.innerHTML = `<p class="mo">Không tải được: ${thoat(e.message)}</p>`;
+    oDang.innerHTML = "";
+  }
+}
+
+function veSoLieu(t) {
+  const soEmLap = new Set(t.hoi_lap_lai.map(x => x.nguoi_dung)).size;
+  const dau = t.dang_bai_vuong_nhat[0];
+  oSoEl.innerHTML =
+    oSo(t.tong_cau_hoi, "câu hỏi đã ghi nhận") +
+    oSo(soEmLap, "em hỏi lặp lại một chỗ") +
+    oSo(dau ? dau.ty_le + "%" : "0%", "tỉ lệ của dạng bài đứng đầu");
+}
+
+function veDangBai(t) {
+  if (!t.dang_bai_vuong_nhat.length) {
+    oDang.innerHTML = trongRong("bieu_do", "Chưa có dữ liệu",
+      "Khi học sinh bắt đầu hỏi bài, bảng này sẽ có số.");
+    return;
+  }
+  const max = t.dang_bai_vuong_nhat[0].so_cau;
+  oDang.innerHTML = t.dang_bai_vuong_nhat.map((d, i) => `
+    <div style="margin-bottom:17px">
+      <div class="gon-gang" style="margin-bottom:6px">
+        <b style="font-size:15px">${i + 1}. ${thoat(d.nhan)}</b>
+        <div class="bao" style="align-items:center">
+          <span class="mo-nho">${d.so_cau} câu &middot; ${d.ty_le}%</span>
+          <button class="phu nho" data-dang="${thoat(d.nhan)}">Sinh đề luyện</button>
+        </div>
+      </div>
+      <div class="thanh ${i === 0 ? "cam" : ""}">
+        <i style="width:${d.so_cau / max * 100}%"></i></div>
+    </div>`).join("");
+
+  oDang.querySelectorAll("button[data-dang]").forEach(b => {
+    b.onclick = () => sinhDe(b.dataset.dang);
+  });
+}
+
+function veHoiLap(t) {
+  const o = document.getElementById("bang-lap");
+  if (!t.hoi_lap_lai.length) {
+    o.innerHTML = trongRong("xong", "Không có em nào hỏi lặp lại",
+      "Chưa em nào hỏi cùng một dạng bài từ ba lần trở lên.");
+    return;
+  }
+  o.innerHTML = `<div class="cuon-ngang"><table>
+    <thead><tr><th>Học sinh</th><th>Dạng bài</th><th class="giua">Số lần hỏi</th></tr></thead>
+    <tbody>${t.hoi_lap_lai.map(d => `<tr>
+      <td><b>${thoat(d.nguoi_dung)}</b></td>
+      <td>${thoat(d.nhan)}</td>
+      <td class="giua"><span class="nhan ${d.so_lan >= 5 ? "do" : "cam"}">${d.so_lan}</span></td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
+
+function veBieuDoGio(t) {
+  const o = document.getElementById("bieu-do-gio");
+  if (!t.theo_gio.length) { o.innerHTML = trongRong("dong_ho", "Chưa có dữ liệu", ""); return; }
+  const max = Math.max(1, ...t.theo_gio.map(g => g.so_cau));
+  o.innerHTML = `<div style="display:flex;gap:4px;align-items:flex-end;height:150px">` +
+    t.theo_gio.map(g => `
+      <div style="flex:1;text-align:center;min-width:0" title="${g.gio} giờ: ${g.so_cau} câu">
+        <div style="background:linear-gradient(180deg,var(--nhan),var(--nang));
+                    border-radius:5px 5px 0 0;transition:height .7s cubic-bezier(.22,1,.36,1);
+                    height:${Math.max(4, g.so_cau / max * 118)}px"></div>
+        <div class="mo-nho" style="font-size:11px;margin-top:3px">${g.gio}h</div>
+      </div>`).join("") + `</div>`;
+}
+
+async function napKho() {
+  const o = document.getElementById("kho");
+  o.innerHTML = khungXuong(3);
+  try {
+    const k = await API.get("/api/tutor/hoc-lieu");
+    o.innerHTML = k.tong_so_doan
+      ? `<p class="mo">Tổng cộng <b>${k.tong_so_doan}</b> đoạn.</p>
+         <div class="cuon-ngang"><table>
+         <thead><tr><th>Môn</th><th>Chương</th><th class="giua">Số đoạn</th></tr></thead>
+         <tbody>${k.theo_chuong.map(c => `<tr><td>${thoat(c.mon)}</td>
+           <td>${thoat(c.chuong)}</td><td class="giua">${c.so_doan}</td></tr>`).join("")}
+         </tbody></table></div>`
+      : trongRong("sach", "Kho học liệu đang trống",
+          "Vào trang Quản trị để nạp đề cương trước khi dùng.");
+  } catch (e) {
+    o.innerHTML = `<p class="mo">Không tải được: ${thoat(e.message)}</p>`;
+  }
+}
+
+// ------------------------------------------------------ sinh đề luyện tập
+async function sinhDe(dang_bai) {
+  const mon = document.getElementById("mon").value || null;
+  const phu = tao("div", "lop-phu");
+  const the = tao("div", "the");
+  the.style.maxWidth = "620px";
+  the.innerHTML = `<h2>Đề luyện tập: ${thoat(dang_bai)}</h2>
+    <p class="mo">Hệ thống đang soạn sáu câu chia ba mức, bám đề cương đã nạp.</p>
+    ${khungXuong(5)}`;
+  phu.appendChild(the);
+  phu.onclick = e => { if (e.target === phu) phu.remove(); };
+  document.body.appendChild(phu);
+
+  try {
+    const kq = await API.post("/api/tutor/sinh-de", { dang_bai, mon, so_cau: 6 });
+    the.innerHTML = `
+      <h2>Đề luyện tập: ${thoat(dang_bai)}</h2>
+      <p class="mo">Soạn từ ${kq.nguon.length} đoạn học liệu của lớp.
+         Thầy cô đọc lại trước khi giao cho học sinh.</p>
+      <pre style="white-space:pre-wrap;font-family:inherit;font-size:14.5px;
+                  background:var(--the-mo);padding:15px;border-radius:var(--r-vua);
+                  border:1px solid var(--vien);margin:0">${thoat(kq.de)}</pre>
+      <div class="hang cach" style="justify-content:flex-end">
+        <button class="phu" id="nut-chep">Chép nội dung</button>
+        <button id="nut-dong">Đóng</button>
+      </div>`;
+    veCongThuc(the.querySelector("pre"));
+    the.querySelector("#nut-dong").onclick = () => phu.remove();
+    the.querySelector("#nut-chep").onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(kq.de);
+        thongBao("Đã chép đề vào bộ nhớ tạm", "xong");
+      } catch (e) { thongBao("Trình duyệt không cho chép tự động", "loi"); }
+    };
+  } catch (e) {
+    the.innerHTML = `<h2>Không sinh được đề</h2>
+      <div class="canh-bao-o">${thoat(e.message)}</div>
+      <div class="hang cach" style="justify-content:flex-end">
+        <button id="nut-dong">Đóng</button></div>`;
+    the.querySelector("#nut-dong").onclick = () => phu.remove();
+  }
+}
+
+document.getElementById("nut-nap").onclick = nap;
+document.getElementById("mon").onchange = nap;
+nap();
+napKho();
+</script>
+</body>
+</html>

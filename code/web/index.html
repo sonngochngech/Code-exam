@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hệ thống học tập</title>
+<link rel="stylesheet" href="/static/style.css">
+<script>
+// Nạp theme riêng cho Dự án 2 nếu đang ở tên miền coithi (hoặc ?da=2 khi xem thử),
+// để trang giới thiệu của hai dự án mang hai ngôn ngữ thiết kế khác nhau.
+(function () {
+  var p = new URLSearchParams(location.search).get("da");
+  var la_da2 = p ? p === "2" : /coithi/.test(location.hostname);
+  if (la_da2) {
+    var l = document.createElement("link");
+    l.rel = "stylesheet"; l.href = "/static/da2.css";
+    document.head.appendChild(l);
+  }
+})();
+</script>
+</head>
+<body>
+
+<div class="khung" id="noi-dung"></div>
+
+<script src="/static/common.js"></script>
+<script>
+const noi_dung = document.getElementById("noi-dung");
+
+// Nhận biết dự án theo tên miền. Cho phép ?da=1 hoặc ?da=2 để xem thử trên máy.
+const HOST = location.hostname;
+const _ep = new URLSearchParams(location.search).get("da");
+const DU_AN = _ep ? Number(_ep)
+  : (/coithi/.test(HOST) ? 2 : (/trogiang/.test(HOST) ? 1 : 0));
+
+// ------------------------------------------------------------- minh hoạ SVG
+// Vẽ bằng nét tròn, tô theo màu nhấn của hệ thống nhờ currentColor.
+const HINH_TRO_GIANG = `
+<svg class="minh-hoa" viewBox="0 0 400 340" fill="none" aria-hidden="true">
+  <rect x="40" y="54" width="300" height="196" rx="30"
+        fill="var(--the)" stroke="currentColor" stroke-width="3"/>
+  <rect x="66" y="90" width="150" height="34" rx="17" fill="var(--nhan-50)"/>
+  <rect x="66" y="140" width="120" height="26" rx="13" fill="var(--kem-dam)"/>
+  <rect x="200" y="176" width="114" height="46" rx="23" fill="currentColor"/>
+  <path d="M232 199h50M232 199l0 0" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="300" cy="70" r="46" fill="var(--nang)"/>
+  <path d="M300 48a20 20 0 0 1 11 37c-3 2-4 4-4 7v3h-14v-3c0-3-1-5-4-7a20 20 0 0 1 11-37Z"
+        fill="#fff" stroke="var(--nang-sau)" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M294 101h12" stroke="var(--nang-sau)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M110 276h180M150 300h100" stroke="currentColor" stroke-width="10"
+        stroke-linecap="round" opacity=".28"/>
+  <circle cx="92" cy="286" r="7" fill="currentColor" opacity=".45"/>
+  <circle cx="118" cy="286" r="7" fill="currentColor" opacity=".7"/>
+  <circle cx="144" cy="286" r="7" fill="currentColor"/>
+  <path d="M352 150l5 12 12 5-12 5-5 12-5-12-12-5 12-5 5-12Z" fill="var(--nhan)"/>
+</svg>`;
+
+const HINH_COI_THI = `
+<svg class="minh-hoa" viewBox="0 0 400 340" fill="none" aria-hidden="true">
+  <rect x="48" y="58" width="304" height="188" rx="26"
+        fill="#1b1622" stroke="currentColor" stroke-width="3"/>
+  <circle cx="200" cy="150" r="46" fill="none" stroke="var(--nhan)" stroke-width="4"/>
+  <circle cx="200" cy="134" r="18" fill="var(--nhan)" opacity=".9"/>
+  <path d="M170 182a30 24 0 0 1 60 0" fill="var(--nhan)" opacity=".9"/>
+  <circle cx="82" cy="86" r="7" fill="var(--mint)"/>
+  <rect x="98" y="80" width="86" height="12" rx="6" fill="#ffffff" opacity=".22"/>
+  <path d="M250 262l26 0" stroke="currentColor" stroke-width="10" stroke-linecap="round" opacity=".3"/>
+  <g>
+    <path d="M300 236a40 40 0 1 1 0 80 40 40 0 0 1 0-80Z" fill="var(--the)"
+          stroke="currentColor" stroke-width="3"/>
+    <path d="M283 276l11 11 22-24" stroke="currentColor" stroke-width="6"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M96 236h120v12a12 12 0 0 1-12 12h-96a12 12 0 0 1-12-12v-12Z" fill="var(--nhan-50)"/>
+  <path d="M60 300l8 0M92 300l8 0M124 300l8 0" stroke="currentColor"
+        stroke-width="8" stroke-linecap="round" opacity=".35"/>
+</svg>`;
+
+// ------------------------------------------------------------- bản sắc dự án
+const BANSAC = {
+  1: {
+    he: 1,
+    tieu_de_trang: "AI trợ giảng theo môn học",
+    ten_mien: "trogiang.cloud",
+    logo_icon: "hoi",
+    the_loai: "Hệ thống 1 · Công nghệ thông tin",
+    tieu_de: ["AI trợ giảng", "theo môn học ngoài giờ lên lớp"],
+    dan: "Vướng bài nào thì hỏi. Hệ thống bám đề cương của chính giáo viên, gợi mở từng bước để em tự tìm ra lời giải, không đưa đáp án.",
+    nut: "Vào học",
+    hinh: HINH_TRO_GIANG,
+    so: [
+      { to: "94,7%", nho: "trả lời đúng chương" },
+      { to: "81,6%", nho: "đúng dạng bài" },
+      { to: "5,3 ms", nho: "thời gian phản hồi" },
+    ],
+    tieu_de_buoc: "Ba bước khi em hỏi bài",
+    buoc: [
+      { ten: "Hỏi bài", mo: "Em gõ câu hỏi, hoặc chép nguyên đề vào khung trò chuyện." },
+      { ten: "Gợi mở", mo: "Hệ thống hỏi lại từng bước theo đề cương để em tự nghĩ ra lời giải." },
+      { ten: "Nắm chắc", mo: "Giáo viên xem lớp vướng ở đâu rồi sinh đề luyện tập theo trình độ." },
+    ],
+  },
+  2: {
+    he: 2,
+    tieu_de_trang: "Giám sát kỳ thi trực tuyến",
+    ten_mien: "coithi.cloud",
+    logo_icon: "mat",
+    the_loai: "Hệ thống 2 · Khoa học xã hội và hành vi",
+    tieu_de: ["Giám sát tự động", "trong kỳ thi trực tuyến thời đại AI"],
+    dan: "Buổi thi áp dụng năm nguyên tắc thiết kế để phát hiện bất thường một cách minh bạch, giảm báo nhầm và giữ cho phán đoán của giáo viên không phụ thuộc vào máy.",
+    nut: "Vào thi",
+    hinh: HINH_COI_THI,
+    so: [
+      { to: "5", nho: "nguyên tắc thiết kế" },
+      { to: "Tại máy", nho: "xử lý hình ảnh, không gửi video đi" },
+      { to: "2 vòng", nho: "phán đoán của giáo viên" },
+    ],
+    tieu_de_buoc: "Một buổi thi diễn ra thế nào",
+    buoc: [
+      { ten: "Báo trước", mo: "Học sinh biết trước tiêu chí và ngưỡng cảnh báo trước khi làm bài." },
+      { ten: "Ghi dấu hiệu", mo: "Camera chạy ngay tại máy, chỉ gửi mốc thời gian và ảnh nhỏ khi có dấu hiệu." },
+      { ten: "Xem lại", mo: "Giáo viên phán đoán hai vòng, học sinh được xem lại bằng chứng." },
+    ],
+  },
+};
+
+// ---------------------------------------------------------------- đặt màu + tiêu đề
+function apBanSac(bs) {
+  if (bs) {
+    datHeThong(bs.he);
+    document.title = bs.tieu_de_trang;
+  }
+}
+
+// ------------------------------------------------------------------- landing
+function veLanding() {
+  // Trang mặc định (localhost hoặc tên miền khác): giới thiệu cả hai sản phẩm.
+  if (!BANSAC[DU_AN]) return veLandingChung();
+
+  const bs = BANSAC[DU_AN];
+  apBanSac(bs);
+  noi_dung.className = "khung gioi-thieu";
+
+  const so = bs.so.map(s =>
+    `<div class="the-so"><div class="to">${s.to}</div><div class="nho">${s.nho}</div></div>`).join("");
+  const buoc = bs.buoc.map((b, i) =>
+    `<div class="buoc"><div class="stt">${i + 1}</div>
+       <h3>${b.ten}</h3><p class="mo" style="margin:0">${b.mo}</p></div>`).join("");
+
+  noi_dung.innerHTML = `
+    <div class="top-gon">
+      <div class="logo-gon">
+        <span class="cham">${icon(bs.logo_icon)}</span>
+        <span>${bs.tieu_de_trang}<span class="ten-mien">${bs.ten_mien}</span></span>
+      </div>
+      <a class="nut phu nho" href="#dang-nhap">Đăng nhập</a>
+    </div>
+
+    <section class="hero">
+      <div class="chu-hero">
+        <span class="huy-hieu-lon"><span class="cham-nho"></span>${bs.the_loai}</span>
+        <h1 class="tieu-de-lon"><span class="sang">${bs.tieu_de[0]}</span><br>${bs.tieu_de[1]}</h1>
+        <p class="dan-hero">${bs.dan}</p>
+        <div class="nut-nhom">
+          <a class="nut lon" href="#dang-nhap">${bs.nut}</a>
+          <a class="nut phu lon" href="#cach-dung">Tìm hiểu thêm</a>
+        </div>
+      </div>
+      <div class="hero-hinh">${bs.hinh}</div>
+    </section>
+
+    <div class="dai-so">${so}</div>
+
+    <section class="khoi" id="cach-dung">
+      <h2>${bs.tieu_de_buoc}</h2>
+      <p class="mo">Thiết kế để phục vụ việc dạy và học, không thay thế thầy cô.</p>
+      <div class="cac-buoc">${buoc}</div>
+    </section>
+
+    <section class="khoi" id="dang-nhap">
+      ${theDangNhap()}
+    </section>`;
+
+  ganDangNhap();
+}
+
+function veLandingChung() {
+  datHeThong(1);
+  document.title = "Hệ thống học tập";
+  noi_dung.className = "khung gioi-thieu";
+  const the = (bs, he) => `
+    <a class="the the-bam the-san-pham" href="https://${bs.ten_mien}"
+       style="--nhan:var(--${he === 1 ? "san-ho" : "mint"});
+              --nhan-50:var(--${he === 1 ? "san-ho-50" : "mint-50"});
+              --nhan-100:var(--${he === 1 ? "san-ho-100" : "mint-100"});
+              --nhan-dam:var(--${he === 1 ? "san-ho-dam" : "mint-dam"});
+              --nhan-sau:var(--${he === 1 ? "san-ho-sau" : "mint-sau"})">
+      <div class="bt">${icon(bs.logo_icon)}</div>
+      <span class="huy-hieu-lon" style="margin:0 0 10px">${bs.the_loai}</span>
+      <h3 style="font-size:20px;margin:0 0 7px">${bs.tieu_de_trang}</h3>
+      <p class="mo" style="margin-bottom:12px">${bs.dan}</p>
+      <span class="nhan">${bs.ten_mien}</span>
+    </a>`;
+
+  noi_dung.innerHTML = `
+    <div class="the gon" style="text-align:center;border-style:dashed;background:transparent">
+      <h2 style="margin:0">Hai sản phẩm, một nền tảng</h2>
+      <p class="mo" style="margin:6px 0 0">Nền tảng phục vụ hai đề tài nghiên cứu khoa học kỹ thuật của học sinh.</p>
+    </div>
+    <div class="luoi luoi-2" style="margin-top:4px">
+      ${the(BANSAC[1], 1)}${the(BANSAC[2], 2)}
+    </div>
+    <section class="khoi" id="dang-nhap">${theDangNhap()}</section>`;
+
+  ganDangNhap();
+}
+
+// ----------------------------------------------------------------- đăng nhập
+function theDangNhap() {
+  return `
+    <div class="the the-dang-nhap">
+      <h2>Đăng nhập</h2>
+      <p class="mo">Học sinh nhập mã dự thi riêng do giáo viên cấp. Giáo viên
+         dùng mã tài khoản mẫu <b>gv01</b> hoặc <b>gv02</b>.</p>
+      <div class="hang">
+        <div class="o">
+          <label for="ma">Mã đăng nhập hoặc mã dự thi</label>
+          <input id="ma" placeholder="Ví dụ: 8KQ4M7PX" autocomplete="off"
+                 autocapitalize="characters">
+        </div>
+        <button id="nut-vao">Vào</button>
+      </div>
+      <p id="loi" class="mo" style="color:var(--do);margin:10px 0 0"></p>
+      <p class="mo-nho" style="margin:14px 0 0">
+        Mọi dữ liệu chỉ dùng cho mục đích học tập và nghiên cứu.</p>
+    </div>`;
+}
+
+function ganDangNhap() {
+  const oMa = document.getElementById("ma");
+  const oLoi = document.getElementById("loi");
+  const nut = document.getElementById("nut-vao");
+  if (!oMa) return;
+
+  async function vao() {
+    const ma = oMa.value.trim();
+    oLoi.textContent = "";
+    if (!ma) { oLoi.textContent = "Em nhập mã trước đã nhé."; oMa.focus(); return; }
+    nut.disabled = true;
+    nut.textContent = "Đang kiểm tra...";
+    try {
+      const nd = await API.post("/api/dang-nhap", { ma });
+      Phien.luu(nd);
+      thongBao(`Chào ${nd.ho_ten}`, "xong");
+      veChonPhan();
+    } catch (e) {
+      oLoi.textContent = e.message;
+      oMa.focus();
+    } finally {
+      nut.disabled = false;
+      nut.textContent = "Vào";
+    }
+  }
+  nut.onclick = vao;
+  oMa.addEventListener("keydown", e => { if (e.key === "Enter") vao(); });
+}
+
+// ------------------------------------------------------------- chọn phần
+const THE_CHUC_NANG = [
+  { duong_dan: "/tro-giang", bt: "hoi", ten: "Hỏi bài ngoài giờ",
+    mo: "Vướng bài nào thì hỏi. Hệ thống gợi mở từng bước để em tự tìm ra lời giải, không đưa đáp án luôn.",
+    nhan: "Hệ thống 1", he: 1, vai_tro: "ai" },
+  { duong_dan: "/lam-bai", bt: "bai", ten: "Làm bài kiểm tra",
+    mo: "Vào ca thi giáo viên đã mở. Nếu lớp em thuộc nhóm có giám sát thì hệ thống sẽ xin quyền dùng camera.",
+    nhan: "Hệ thống 2", he: 2, vai_tro: "ai" },
+  { duong_dan: "/bang-dieu-khien", bt: "bieu_do", ten: "Thống kê lớp",
+    mo: "Xem lớp đang vướng nhất ở dạng bài nào, em nào hỏi lặp lại một chỗ, và sinh đề luyện tập phân hóa.",
+    nhan: "Hệ thống 1", he: 1, vai_tro: "giao_vien" },
+  { duong_dan: "/coi-thi", bt: "mat", ten: "Coi thi và xem lại",
+    mo: "Ghi phán đoán vòng một, sau đó xem bằng chứng hệ thống ghi nhận rồi đánh giá lại ở vòng hai.",
+    nhan: "Hệ thống 2", he: 2, vai_tro: "giao_vien" },
+  { duong_dan: "/quan-tri", bt: "banh_rang", ten: "Quản trị",
+    mo: "Nạp đề cương, sửa nhãn chương bài, soạn đề thi, mở ca thi và xuất dữ liệu nghiên cứu.",
+    nhan: "Cả hai", he: 0, vai_tro: "giao_vien" },
+];
+
+function veChonPhan() {
+  const nd = Phien.lay();
+  datHeThong(DU_AN === 2 ? 2 : 1);
+  dungKhung("Hệ thống học tập", nd.lop ? `Lớp ${nd.lop}` : "");
+  noi_dung.className = "khung";
+
+  const the = THE_CHUC_NANG
+    .filter(x => x.vai_tro === "ai" || nd.vai_tro === x.vai_tro)
+    .map(x => `
+      <a class="the the-bam" href="${x.duong_dan}"
+         ${x.he ? `style="--nhan:var(${x.he === 1 ? "--san-ho" : "--mint"});
+                         --nhan-50:var(${x.he === 1 ? "--san-ho-50" : "--mint-50"});
+                         --nhan-100:var(${x.he === 1 ? "--san-ho-100" : "--mint-100"});
+                         --nhan-dam:var(${x.he === 1 ? "--san-ho-dam" : "--mint-dam"});
+                         --nhan-sau:var(${x.he === 1 ? "--san-ho-sau" : "--mint-sau"})"` : ""}>
+        <div class="bt">${icon(x.bt)}</div>
+        <h3 style="margin:0 0 7px">${x.ten}</h3>
+        <p class="mo" style="margin-bottom:14px">${x.mo}</p>
+        <span class="nhan">${x.nhan}</span>
+      </a>`).join("");
+
+  noi_dung.innerHTML = `
+    <div class="the gon tieu-de-khoa-hoc">
+      <h2 style="margin:0">Chào ${thoat(nd.ho_ten)}</h2>
+      <p class="mo" style="margin:4px 0 0">${xungHo() === "em" ? "Em" : "Thầy cô"} có thể tiếp tục học tập hoặc công việc từ đây.</p>
+    </div>
+    <div class="luoi luoi-2 danh-sach-khoa-hoc">${the}</div>`;
+}
+
+// ----------------------------------------------------------------- trang đăng nhập
+function veDangNhap() {
+  datHeThong(DU_AN === 2 ? 2 : 1);
+  document.title = "Đăng nhập";
+  noi_dung.className = "khung khung-hep";
+  noi_dung.innerHTML = `
+    <div style="margin:14px 0 16px">
+      <a href="/" class="nut nhe" style="text-decoration:none">← Về trang giới thiệu</a>
+    </div>
+    ${theDangNhap()}`;
+  ganDangNhap();
+}
+
+// ------------------------------------------------------------------ khởi động
+Phien.lay() ? veChonPhan() : veDangNhap();
+</script>
+</body>
+</html>

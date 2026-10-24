@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quy định giám sát</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-he-thong="2">
+<main class="khung">
+  <section class="the">
+    <h2>Quy định giám sát của ca thi</h2>
+    <p class="mo">Chọn ca thi để xem những dấu hiệu được ghi nhận và quyền của học sinh.</p>
+    <div class="hang"><div class="o"><label for="ca-info">Ca thi</label><select id="ca-info"></select></div>
+      <button id="xem-info">Xem quy định</button></div>
+  </section>
+  <section id="ket-qua-info" aria-live="polite"></section>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const nd = Phien.batBuoc();
+dungKhung("Quy định giám sát", "Thông tin cần biết trước khi làm bài");
+const chon = document.getElementById("ca-info");
+
+async function khoiTao() {
+  const ds = await API.get("/api/exam/ca");
+  chon.innerHTML = ds.map(c => `<option value="${c.id}">${thoat(c.ten)}</option>`).join("");
+  if (ds.length) xem(); else document.getElementById("ket-qua-info").innerHTML = trongRong("dong_ho", "Chưa có ca thi", "Giáo viên cần tạo ca trước.");
+}
+
+async function xem() {
+  try {
+    const d = await API.get(`/api/exam/ca/${chon.value}/thong-tin-cong-khai`);
+    document.getElementById("ket-qua-info").innerHTML = `
+      <section class="the"><h2>Bốn tiêu chí được theo dõi</h2>
+        <div class="luoi luoi-2">${d.bon_tieu_chi.map(x => `<div class="canh-bao-o">
+          <b>${thoat(x.ten)}</b><br><span class="mo-nho">Chỉ ghi nhận khi kéo dài từ ${x.nguong_giay} giây</span>
+        </div>`).join("")}</div><p class="canh-bao-o luc cach-nho"><b>${thoat(d.tuyen_bo)}</b></p>
+        <p class="canh-bao-o tim">${thoat(d.chinh_sach_nghien_cuu)}</p></section>
+      <section class="the"><h2>Điều học sinh cần nhớ</h2>
+        <div class="luoi luoi-3">
+          <div class="muc-huong-dan"><b>Minh bạch</b><span>Các tiêu chí được báo trước khi bắt đầu.</span></div>
+          <div class="muc-huong-dan"><b>Không tự động kết luận</b><span>Giáo viên là người xem xét và đưa ra quyết định cuối cùng.</span></div>
+          <div class="muc-huong-dan"><b>Có quyền phản hồi</b><span>Học sinh có thể xem lại bằng chứng của mình và gửi giải thích.</span></div>
+        </div></section>`;
+  } catch (e) { document.getElementById("ket-qua-info").innerHTML = `<div class="canh-bao-o">${thoat(e.message)}</div>`; }
+}
+document.getElementById("xem-info").onclick = xem;
+khoiTao().catch(e => thongBao(e.message, "loi"));
+</script>
+</body>
+</html>

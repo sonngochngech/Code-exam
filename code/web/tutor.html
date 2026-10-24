@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hỏi bài</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+</head>
+<body>
+
+<div class="khung">
+
+  <div class="chuoi">
+    <span class="so" id="so-chuoi">0</span>
+    <div>
+      <div>ngày liên tiếp em có hỏi bài</div>
+      <div style="font-weight:400;font-size:13.5px;opacity:.85" id="loi-dong-vien">
+        Giữ đà nhé!</div>
+    </div>
+  </div>
+
+  <div class="the gon cach">
+    <div class="hang">
+      <div class="o">
+        <label for="mon">Môn đang hỏi</label>
+        <select id="mon">
+          <option value="">Tất cả các môn</option>
+          <option value="Toán">Toán</option>
+          <option value="Vật lí">Vật lí</option>
+        </select>
+      </div>
+      <button class="phu" id="nut-moi">Sang bài mới</button>
+      <button class="phu" id="nut-lich-su">Lịch sử hỏi</button>
+    </div>
+  </div>
+
+  <div class="the">
+    <div class="hoi-thoai" id="hoi-thoai"></div>
+
+    <div class="hang cach-nho">
+      <div class="o" style="flex-basis:100%">
+        <textarea id="o-hoi" rows="3"
+          placeholder="Gõ câu hỏi của em... Chép nguyên đề cũng được."></textarea>
+      </div>
+      <div style="flex:1 1 100%;display:flex;justify-content:flex-end">
+        <button id="nut-gui">Gửi câu hỏi</button>
+      </div>
+    </div>
+    <p class="mo-nho" style="margin:9px 0 0">
+      Mẹo: viết rõ em đã làm được tới bước nào thì thầy cô gợi ý đúng chỗ hơn.
+      Bấm Ctrl và Enter để gửi nhanh.</p>
+  </div>
+
+  <div class="the an" id="o-nguon">
+    <h3 style="margin-top:0">Hệ thống đã dựa vào đâu để trả lời</h3>
+    <div id="nguon"></div>
+  </div>
+
+</div>
+
+<script src="/static/common.js"></script>
+<script>
+const nd = Phien.batBuoc();
+datHeThong(1);
+dungKhung("Hỏi bài ngoài giờ", nd ? `Lớp ${nd.lop || ""}` : "");
+
+let lichSu = [];
+const oHoiThoai = document.getElementById("hoi-thoai");
+const oHoi = document.getElementById("o-hoi");
+const nutGui = document.getElementById("nut-gui");
+
+const CHAO = "Chào em. Em đang vướng bài nào thì gõ vào đây nhé.\n\n" +
+  "Thầy cô sẽ không giải hộ mà sẽ hỏi lại để em tự nghĩ ra. " +
+  "Em cứ viết ra phần mình đã làm được, kể cả khi chưa chắc đúng.";
+
+function themBong(lop, chu) {
+  const b = tao("div", "bong-chat " + lop, chu);
+  oHoiThoai.appendChild(b);
+  veCongThuc(b);
+  oHoiThoai.scrollTop = oHoiThoai.scrollHeight;
+  return b;
+}
+
+function themDangGo() {
+  const o = tao("div", "bong-chat may dang-go");
+  o.innerHTML = "<i></i><i></i><i></i>";
+  oHoiThoai.appendChild(o);
+  oHoiThoai.scrollTop = oHoiThoai.scrollHeight;
+  return o;
+}
+
+async function gui() {
+  const cau = oHoi.value.trim();
+  if (!cau) { oHoi.focus(); return; }
+  oHoi.value = "";
+  nutGui.disabled = true;
+  themBong("em", cau);
+
+  const dangGo = themDangGo();
+  try {
+    const kq = await API.post("/api/tutor/hoi", {
+      nguoi_dung: nd.ma,
+      cau_hoi: cau,
+      mon: document.getElementById("mon").value || null,
+      lich_su: lichSu,
+    });
+    dangGo.remove();
+    themBong("may", kq.tra_loi);
+
+    lichSu.push({ role: "user", content: cau });
+    lichSu.push({ role: "assistant", content: kq.tra_loi });
+    if (lichSu.length > 12) lichSu = lichSu.slice(-12);
+
+    hienNguon(kq);
+    ghiNhanChuoi();
+  } catch (e) {
+    dangGo.remove();
+    themBong("loi", "Có lỗi khi gửi câu hỏi: " + e.message);
+  } finally {
+    nutGui.disabled = false;
+    oHoi.focus();
+  }
+}
+
+function hienNguon(kq) {
+  const o = document.getElementById("o-nguon");
+  if (!kq.nguon || !kq.nguon.length) {
+    o.classList.remove("an");
+    document.getElementById("nguon").innerHTML =
+      '<div class="canh-bao-o">Hệ thống không tìm thấy đoạn học liệu nào khớp với ' +
+      'câu hỏi này. Có thể nội dung chưa có trong đề cương của lớp, em thử hỏi ' +
+      'lại bằng từ ngữ sát bài học hơn, hoặc hỏi trực tiếp thầy cô.</div>';
+    return;
+  }
+  o.classList.remove("an");
+  document.getElementById("nguon").innerHTML = `
+    <div class="bao" style="margin-bottom:12px">
+      <span class="nhan">${thoat(kq.chuong)}</span>
+      ${kq.dang_bai ? `<span class="nhan cam">${thoat(kq.dang_bai)}</span>` : ""}
+    </div>
+    <div class="cuon-ngang"><table>
+      <thead><tr><th>Chương</th><th>Bài</th><th class="phai">Độ khớp</th></tr></thead>
+      <tbody>${kq.nguon.map(n => `<tr><td>${thoat(n.chuong)}</td>
+        <td>${thoat(n.bai)}</td><td class="phai">${n.diem}</td></tr>`).join("")}
+      </tbody></table></div>`;
+}
+
+// Chuỗi ngày hỏi bài liên tiếp, lưu ngay trên máy em. Chỉ là động lực nhỏ.
+function ghiNhanChuoi() {
+  try {
+    const homNay = new Date().toISOString().slice(0, 10);
+    const cu = JSON.parse(localStorage.getItem("chuoi_" + nd.ma) || "{}");
+    if (cu.ngay === homNay) return;
+    const homQua = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const so = cu.ngay === homQua ? (cu.so || 0) + 1 : 1;
+    localStorage.setItem("chuoi_" + nd.ma, JSON.stringify({ ngay: homNay, so }));
+    veChuoi(so);
+    if (so > 1) thongBao(`Chuỗi ${so} ngày liên tiếp. Giỏi lắm!`, "xong");
+  } catch (e) {}
+}
+
+function veChuoi(so) {
+  document.getElementById("so-chuoi").textContent = so;
+  const loi = so >= 7 ? "Một tuần liền rồi đấy!"
+            : so >= 3 ? "Đang vào guồng rồi, cố lên!"
+            : so >= 1 ? "Giữ đà nhé!" : "Hôm nay hỏi bài để bắt đầu chuỗi nhé.";
+  document.getElementById("loi-dong-vien").textContent = loi;
+}
+
+function napChuoi() {
+  try {
+    const cu = JSON.parse(localStorage.getItem("chuoi_" + nd.ma) || "{}");
+    const homNay = new Date().toISOString().slice(0, 10);
+    const homQua = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    veChuoi(cu.ngay === homNay || cu.ngay === homQua ? (cu.so || 0) : 0);
+  } catch (e) { veChuoi(0); }
+}
+
+async function xemLichSu() {
+  const kq = await API.get(`/api/tutor/lich-su?nguoi_dung=${encodeURIComponent(nd.ma)}`);
+  const noi_dung = kq.danh_sach.length ? `
+    ${kq.dang_bai_hay_hoi.length ? `
+      <p class="mo">Dạng bài em hỏi nhiều nhất:</p>
+      <div class="bao" style="margin-bottom:14px">
+        ${kq.dang_bai_hay_hoi.map(d =>
+          `<span class="nhan ${d.so_lan >= 3 ? "cam" : ""}">${thoat(d.nhan)}: ${d.so_lan} lần</span>`
+        ).join("")}
+      </div>` : ""}
+    <div class="xep">
+      ${kq.danh_sach.slice(0, 15).map(d => `
+        <div class="the gon phang" style="margin:0">
+          <div class="mo-nho">${dinhDangNgay(d.tao_luc)} &middot; ${thoat(d.chuong || "")}</div>
+          <div style="font-weight:600;margin:4px 0">${thoat(d.noi_dung)}</div>
+        </div>`).join("")}
+    </div>`
+    : trongRong("hop_rong", "Chưa có câu hỏi nào", "Em hỏi bài đầu tiên đi nhé.");
+  hopThoai("Lịch sử hỏi bài của em", noi_dung);
+}
+
+nutGui.onclick = gui;
+oHoi.addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) gui();
+});
+document.getElementById("nut-moi").onclick = () => {
+  lichSu = [];
+  oHoiThoai.innerHTML = "";
+  themBong("may", "Rồi, mình sang bài mới nhé. Em gõ đề vào đây.");
+  document.getElementById("o-nguon").classList.add("an");
+  oHoi.focus();
+};
+document.getElementById("nut-lich-su").onclick = xemLichSu;
+
+themBong("may", CHAO);
+napChuoi();
+oHoi.focus();
+</script>
+</body>
+</html>

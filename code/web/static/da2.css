@@ -1,0 +1,137 @@
+/* =========================================================================
+   Theme riêng cho Dự án 2 (coithi.cloud: giám sát kỳ thi).
+
+   Mục tiêu: một ngôn ngữ thiết kế khác hẳn Dự án 1. Nếu DA1 là tông ấm, bo
+   tròn, tươi trẻ thì DA2 là tông mát, vuông vức, mạch lạc kiểu công cụ nghiên
+   cứu. Khác chữ (Sora và Inter thay cho Nunito), khác màu (xanh cyan và chàm
+   trên nền xám lạnh), khác hình khối (góc vuông hơn, bóng khuếch tán thay cho
+   bóng lệch cứng), khác cảm giác.
+
+   Cách làm: ghi đè các biến thiết kế của style.css. Vì các thành phần đều vẽ
+   theo biến nên chỉ cần đổi biến là cả hệ đổi theo, không phải sửa từng chỗ.
+   Nạp file này SAU style.css trên các trang của Dự án 2.
+   ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  /* nền và chữ: xám lạnh, mực đậm */
+  --kem:      #eef2f7;
+  --kem-dam:  #e2e8f0;
+  --the:      #ffffff;
+  --the-mo:   #f8fafc;
+  --chu:      #0b1324;
+  --chu-vua:  #475569;
+  --chu-mo:   #94a3b8;
+  --vien:     #e3e8ef;
+  --vien-dam: #cbd5e1;
+
+  /* màu nhấn chính: cyan đậm, phẳng */
+  --mint-50:  #ecfeff;
+  --mint-100: #cff7fb;
+  --mint:     #0891b2;
+  --mint-dam: #0e7490;
+  --mint-sau: #155e75;
+
+  /* màu phụ chuyển sang chàm, để khác hẳn cặp cam và vàng của DA1 */
+  --nang-50:  #eef2ff;
+  --nang:     #6366f1;
+  --nang-sau: #3730a3;
+
+  /* màu nhấn dùng chung lấy theo cyan */
+  --nhan-50:  var(--mint-50);
+  --nhan-100: var(--mint-100);
+  --nhan:     var(--mint);
+  --nhan-dam: var(--mint-dam);
+  --nhan-sau: var(--mint-sau);
+
+  /* bóng khuếch tán, không lệch cứng */
+  --bong-1: 0 1px 2px rgba(15, 23, 42, .06), 0 1px 3px rgba(15, 23, 42, .05);
+  --bong-2: 0 6px 16px rgba(15, 23, 42, .09);
+  --bong-3: 0 14px 34px rgba(15, 23, 42, .13);
+
+  /* góc vuông vức hơn hẳn DA1 */
+  --r-nho:  8px;
+  --r-vua:  10px;
+  --r-lon:  14px;
+  --r-tron: 8px;
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-weight: 450;
+  background: var(--kem);
+}
+h1, h2, h3 { font-family: Sora, Inter, sans-serif; letter-spacing: -.02em; }
+
+/* nền phẳng, bỏ vệt gradient ấm của DA1, thay bằng dải lạnh dịu ở đỉnh trang */
+body::before {
+  background:
+    radial-gradient(680px 240px at 100% -12%, #e0f2fe, transparent 70%),
+    radial-gradient(520px 220px at 0% -10%, #eef2ff, transparent 72%);
+  height: 320px;
+}
+
+/* chữ nhấn trong tiêu đề hero: chuyển sắc cyan sang chàm */
+.tieu-de-lon .sang {
+  background: linear-gradient(118deg, var(--mint), var(--nang));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* thẻ: viền mảnh, góc vừa, bóng khuếch tán */
+.the { border: 1px solid var(--vien); border-radius: var(--r-lon); }
+
+/* nút: phẳng, không bóng lệch cứng kiểu DA1 */
+button, .nut {
+  border-radius: 8px; font-weight: 600; box-shadow: none;
+  border: 1px solid transparent;
+  transition: filter .15s ease, box-shadow .15s ease, transform .1s ease, background .15s ease;
+}
+button:hover, .nut:hover { transform: none; box-shadow: var(--bong-2); filter: brightness(1.05); }
+button:active, .nut:active { transform: translateY(1px); box-shadow: none; filter: none; }
+button.phu, .nut.phu {
+  background: var(--the); color: var(--chu); border: 1px solid var(--vien-dam); box-shadow: none;
+}
+button.phu:hover, .nut.phu:hover {
+  background: var(--the-mo); border-color: var(--nhan); color: var(--nhan-sau); box-shadow: var(--bong-1);
+}
+
+/* ô nhập: góc vuông, viền mảnh */
+input, select, textarea { border: 1.5px solid var(--vien-dam); border-radius: 8px; }
+
+/* đầu trang và thanh tab: góc vừa thay cho bo tròn nhiều, logo vuông đặc một màu */
+header.dinh .trong { border-radius: 12px; border: 1px solid var(--vien); }
+header.dinh .logo-dau { background: var(--nhan); border-radius: 9px; }
+.tab-phu .trong { border-radius: 11px; border: 1px solid var(--vien); }
+.tab-phu a, header.dinh a { border-radius: 7px; }
+.tab-phu a.dang-o { border-radius: 7px; box-shadow: none; }
+
+/* ảnh đại diện: vuông bo nhẹ, một màu, khác hẳn hình tròn gradient của DA1 */
+.anh-dai-dien { border-radius: 9px; background: var(--nhan); }
+
+/* huy hiệu và nhãn: chữ in hoa, giãn chữ, góc vuông, cảm giác nhãn dữ liệu */
+.nhan {
+  border-radius: 6px; text-transform: uppercase;
+  letter-spacing: .05em; font-size: 11.5px; font-weight: 700;
+}
+.huy-hieu-lon {
+  border-radius: 7px; text-transform: uppercase;
+  letter-spacing: .06em; font-size: 12px; font-weight: 700;
+}
+
+/* dải số liệu và các bước: phẳng, góc vừa */
+.the-so { border-radius: 10px; box-shadow: var(--bong-1); }
+.the-so .to { font-family: Sora, Inter, sans-serif; }
+.buoc { border-radius: 12px; }
+.buoc .stt { border-radius: 9px; box-shadow: none; }
+.o-so { border-radius: 10px; }
+
+/* thanh tiến độ và câu hỏi thi: góc vừa cho đồng bộ */
+.thanh { border-radius: 7px; }
+.cau { border-radius: 12px; }
+.pa { border-radius: 8px; }
+.khung-camera { border-radius: 14px; }
+.den-bao { border-radius: 8px; }
+
+/* bảng: đầu cột nền lạnh */
+th { background: var(--the-mo); }

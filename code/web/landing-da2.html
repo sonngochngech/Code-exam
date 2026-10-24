@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<!--
+  Landing Dự án 2 (Giám sát kỳ thi).
+  Nền giao diện: Grayscale by Start Bootstrap, giấy phép MIT (xem /static/da2/LICENSE).
+  MIT không yêu cầu ghi công hiển thị trên trang.
+-->
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+  <title>Giám sát kỳ thi trực tuyến</title>
+  <script src="https://use.fontawesome.com/releases/v6.3.0/js/all.js" crossorigin="anonymous"></script>
+  <link href="https://fonts.googleapis.com/css?family=Varela+Round" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css?family=Nunito:200,300,400,600,700,800,900" rel="stylesheet" />
+  <link href="/static/da2/css/styles.css" rel="stylesheet" />
+  <style>
+    .masthead { background: linear-gradient(135deg, #0b1a24 0%, #0e7490 100%) !important; }
+    .panel-ic { min-height: 340px; display:flex; align-items:center; justify-content:center;
+                background: linear-gradient(135deg, #0e7490, #0b1a24); border-radius: .5rem; }
+    .panel-ic i { font-size: 5rem; color: #22d3ee; }
+    .ngtac i { color:#22d3ee; }
+  </style>
+</head>
+<body id="page-top">
+  <nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
+    <div class="container px-4 px-lg-5">
+      <a class="navbar-brand" href="#page-top">Giám sát kỳ thi</a>
+      <button class="navbar-toggler navbar-toggler-right" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Menu">
+        Menu <i class="fas fa-bars"></i>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarResponsive">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item"><a class="nav-link" href="#about">Giới thiệu</a></li>
+          <li class="nav-item"><a class="nav-link" href="#cach">Cách bảo vệ</a></li>
+          <li class="nav-item"><a class="nav-link" href="#nguyen-tac">Năm nguyên tắc</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <header class="masthead">
+    <div class="container px-4 px-lg-5 d-flex h-100 align-items-center justify-content-center">
+      <div class="d-flex justify-content-center">
+        <div class="text-center">
+          <h1 class="mx-auto my-0 text-uppercase">Giám sát kỳ thi</h1>
+          <h2 class="text-white-50 mx-auto mt-2 mb-5">Giám sát tự động trong kỳ thi trực tuyến thời đại AI. Minh bạch, giảm báo nhầm, giữ cho phán đoán của giáo viên không phụ thuộc vào máy.</h2>
+          <a class="btn btn-primary" href="/vao">Vào hệ thống</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="about-section text-center" id="about">
+    <div class="container px-4 px-lg-5">
+      <div class="row gx-4 gx-lg-5 justify-content-center">
+        <div class="col-lg-8">
+          <h2 class="text-white mb-4">Hình ảnh xử lý ngay tại máy học sinh</h2>
+          <p class="text-white-50">Nhận diện khuôn mặt chạy trong trình duyệt. Máy chủ chỉ nhận mốc thời gian kèm một ảnh nhỏ tại đúng lúc có dấu hiệu. Video không rời khỏi máy và không được lưu lại. Hệ thống không kết luận gian lận, chỉ đánh dấu để giáo viên xem lại.</p>
+        </div>
+      </div>
+      <img class="img-fluid rounded shadow" src="/static/da2/assets/img/app-exam.png" alt="Giao diện làm bài có giám sát" style="max-width:900px;width:100%" />
+    </div>
+  </section>
+
+  <section class="projects-section bg-light" id="cach">
+    <div class="container px-4 px-lg-5">
+      <div class="row gx-0 mb-4 mb-lg-5 align-items-center">
+        <div class="col-xl-8 col-lg-7"><div class="panel-ic"><i class="fas fa-microchip"></i></div></div>
+        <div class="col-xl-4 col-lg-5">
+          <div class="featured-text text-center text-lg-left">
+            <h4>Xử lý tại máy</h4>
+            <p class="text-black-50 mb-0">Camera và nhận diện chạy trong trình duyệt. Chỉ gửi mốc thời gian và một ảnh nhỏ khi có dấu hiệu, không gửi video.</p>
+          </div>
+        </div>
+      </div>
+      <div class="row gx-0 mb-5 mb-lg-0 justify-content-center">
+        <div class="col-lg-6"><div class="panel-ic"><i class="fas fa-code-branch"></i></div></div>
+        <div class="col-lg-6">
+          <div class="bg-black text-center h-100 project">
+            <div class="d-flex h-100"><div class="project-text w-100 my-auto text-center text-lg-left">
+              <h4 class="text-white">Hai vòng phán đoán</h4>
+              <p class="mb-0 text-white-50">Giáo viên phán đoán trước khi xem dữ liệu, rồi đánh giá lại sau. Thiết kế đo lặp để tách tác động của bằng chứng khỏi chênh lệch năng lực.</p>
+            </div></div>
+          </div>
+        </div>
+      </div>
+      <div class="row gx-0 justify-content-center">
+        <div class="col-lg-6"><div class="panel-ic"><i class="fas fa-eye"></i></div></div>
+        <div class="col-lg-6 order-lg-first">
+          <div class="bg-black text-center h-100 project">
+            <div class="d-flex h-100"><div class="project-text w-100 my-auto text-center text-lg-right">
+              <h4 class="text-white">Công khai bằng chứng</h4>
+              <p class="mb-0 text-white-50">Học sinh được xem lại đúng ảnh và mốc thời gian hệ thống ghi nhận, bảo đảm minh bạch và quyền phản hồi.</p>
+            </div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="signup-section" id="nguyen-tac">
+    <div class="container px-4 px-lg-5">
+      <div class="row gx-4 gx-lg-5">
+        <div class="col-md-10 col-lg-10 mx-auto text-center">
+          <i class="fas fa-shield-halved fa-2x mb-2 text-white"></i>
+          <h2 class="text-white mb-5">Năm nguyên tắc thiết kế</h2>
+          <div class="row g-4 text-start ngtac">
+            <div class="col-md-6"><div class="d-flex"><i class="fas fa-bullhorn fa-lg me-3 mt-1"></i><div><h5 class="text-white mb-1">Báo trước tiêu chí</h5><p class="text-white-50 small mb-0">Học sinh biết trước hệ thống quan sát dấu hiệu nào và ngưỡng ra sao.</p></div></div></div>
+            <div class="col-md-6"><div class="d-flex"><i class="fas fa-stopwatch fa-lg me-3 mt-1"></i><div><h5 class="text-white mb-1">Ngưỡng thời gian</h5><p class="text-white-50 small mb-0">Chỉ ghi nhận khi dấu hiệu kéo dài quá ngưỡng, tránh báo nhầm thoáng qua.</p></div></div></div>
+            <div class="col-md-6"><div class="d-flex"><i class="fas fa-desktop fa-lg me-3 mt-1"></i><div><h5 class="text-white mb-1">Xử lý tại máy</h5><p class="text-white-50 small mb-0">Hình ảnh xử lý trong trình duyệt, chỉ gửi mốc và ảnh nhỏ khi cần.</p></div></div></div>
+            <div class="col-md-6"><div class="d-flex"><i class="fas fa-code-branch fa-lg me-3 mt-1"></i><div><h5 class="text-white mb-1">Tách hai vòng phán đoán</h5><p class="text-white-50 small mb-0">Phán đoán trước và sau khi xem dữ liệu, đo được tác động của bằng chứng.</p></div></div></div>
+            <div class="col-md-6"><div class="d-flex"><i class="fas fa-eye fa-lg me-3 mt-1"></i><div><h5 class="text-white mb-1">Công khai bằng chứng</h5><p class="text-white-50 small mb-0">Học sinh xem lại được ảnh và mốc, bảo đảm minh bạch.</p></div></div></div>
+            <div class="col-md-6"><div class="d-flex"><i class="fas fa-chart-line fa-lg me-3 mt-1"></i><div><h5 class="text-white mb-1">Phân tích có kiểm định</h5><p class="text-white-50 small mb-0">Độ chính xác, độ nhạy, số lần nghi oan, kèm kiểm định thống kê.</p></div></div></div>
+          </div>
+          <a class="btn btn-primary mt-5" href="/vao">Vào hệ thống</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer bg-black small text-center text-white-50">
+    <div class="container px-4 px-lg-5">
+      Sản phẩm nghiên cứu khoa học kỹ thuật, lĩnh vực Khoa học xã hội và hành vi.
+      Mọi dữ liệu chỉ dùng cho mục đích học tập và nghiên cứu. &copy; Giám sát kỳ thi trực tuyến
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/static/da2/js/scripts.js"></script>
+</body>
+</html>

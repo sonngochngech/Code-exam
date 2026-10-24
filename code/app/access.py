@@ -1,0 +1,44 @@
+"""Small authorization helpers for the prototype.
+
+Actor identity always comes from the authenticated session. Browser-supplied
+codes may be checked for compatibility, but are never trusted as identity.
+"""
+
+from fastapi import HTTPException
+
+from . import db
+
+
+def student_code(user: dict, requested_code: str | None = None) -> str:
+    if user.get("vai_tro") != "hoc_sinh":
+        raise HTTPException(403, "Chức năng này dành cho học sinh.")
+    actual = user["ma"]
+    if requested_code and requested_code != actual:
+        raise HTTPException(403, "Không được thao tác thay cho học sinh khác.")
+    return actual
+
+
+def teacher_code(user: dict, requested_code: str | None = None) -> str:
+    if user.get("vai_tro") != "giao_vien":
+        raise HTTPException(403, "Chức năng này dành cho giáo viên.")
+    actual = user["ma"]
+    if requested_code and requested_code != actual:
+        raise HTTPException(403, "Không được thao tác dưới mã giáo viên khác.")
+    return actual
+
+
+def require_session_assignment(session_id: int, user: dict, role: str | None = None) -> None:
+    """Require an explicit assignment for the current session."""
+    expected = role or user.get("vai_tro")
+    scoped_session = user.get("ca_thi")
+    if expected == "hoc_sinh" and scoped_session is not None and scoped_session != session_id:
+        raise HTTPException(403, "Mã dự thi không có quyền vào ca thi này.")
+    with db.ket_noi() as connection:
+        row = connection.execute(
+            "SELECT 1 FROM ca_thi_nguoi_dung WHERE ca_thi=? AND nguoi_dung=?"
+            " AND vai_tro_trong_ca=?",
+            (session_id, user["ma"], expected),
+        ).fetchone()
+    if not row:
+        raise HTTPException(403, "Bạn không được phân công vào ca thi này.")
+
