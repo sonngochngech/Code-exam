@@ -58,6 +58,21 @@ so sánh hai nhóm kèm kiểm định t, tải dữ liệu CSV và dọn dữ l
 
 ### Bước 4. Nạp dữ liệu mẫu
 
+**Cách nhanh nhất (dùng ngay):** chép cơ sở dữ liệu mẫu có sẵn rồi chạy ứng dụng.
+
+```
+copy data\demo\hethong.demo.db data\hethong.db        (Windows)
+cp data/demo/hethong.demo.db data/hethong.db            (macOS/Linux)
+```
+
+Cơ sở dữ liệu mẫu chỉ có dữ liệu giả để thử: 32 tài khoản mẫu, 36 đoạn học liệu
+(Toán 9 và Vật lí 9, tự soạn), một đề mười câu và hai ca thi ở trạng thái nháp
+(lớp 9A có giám sát, lớp 9B đối chứng). Không có ảnh, bài làm hay dữ liệu thật.
+Giáo viên chỉ cần vào **Quản trị → Ca thi**, bấm **Mở** rồi **Tạo mã dự thi**.
+Chạy lệnh trên sẽ ghi đè `data/hethong.db`, nên đừng chạy khi đã có dữ liệu riêng.
+
+**Hoặc tự tạo từ đầu:**
+
 ```
 python nap_du_lieu.py de-mau
 ```
@@ -65,11 +80,11 @@ python nap_du_lieu.py de-mau
 Lệnh này tạo một đề mười câu và hai ca thi: lớp 9A thuộc nhóm có giám sát,
 lớp 9B thuộc nhóm đối chứng.
 
-Nạp học liệu cho phần hỏi bài:
+Nạp học liệu cho phần hỏi bài (hai file đề cương mẫu đi kèm):
 
 ```
-python nap_du_lieu.py hoc-lieu data\hoclieu\decuong_toan.docx "Toán"
-python nap_du_lieu.py hoc-lieu data\hoclieu\decuong_ly.docx "Vật lí"
+python nap_du_lieu.py hoc-lieu data\hoclieu\decuong_toan9.docx "Toán"
+python nap_du_lieu.py hoc-lieu data\hoclieu\decuong_vatli9.docx "Vật lí"
 ```
 
 ### Bước 5. Chạy
