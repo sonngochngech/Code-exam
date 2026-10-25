@@ -20,6 +20,42 @@
     .panel-ic i { font-size: 5rem; color: #22d3ee; }
     .ngtac i { color:#22d3ee; }
   </style>
+  <style>.navbar-toggler { min-height: 44px; min-width: 44px; }</style>
+  <style>
+    /* Phiếu 1.1: tương phản tiêu đề, thẻ điểm nổi bật, số liệu, video và QR, hiệu ứng khi cuộn */
+    .mo-ta-masthead { color: rgba(255,255,255,.92); font-size: 1.15rem; line-height: 1.55; max-width: 46rem; }
+    .nut-hanh-dong { display: inline-flex; gap: .75rem; flex-wrap: wrap; justify-content: center; }
+    .btn-qr { background: #fff; color: #0e7490; border: 0; font-weight: 700; }
+    .btn-qr:hover { background: #ecfeff; color: #0b5e74; }
+    .noi-bat { background: #f4fbfd; padding: 4.5rem 0 3.5rem; }
+    .noi-bat h2 { color: #0b1a24; font-weight: 800; }
+    .noi-bat .lead { color: #35505c; }
+    .the-nb { background: #fff; border: 1px solid #d3e8ef; border-radius: 1rem; padding: 1.6rem; height: 100%;
+              box-shadow: 0 6px 20px rgba(14,116,144,.08); transition: transform .2s ease, box-shadow .2s ease; }
+    .the-nb:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(14,116,144,.16); }
+    .the-nb .bt { width: 3.4rem; height: 3.4rem; border-radius: 1rem; display: grid; place-items: center;
+                  background: linear-gradient(135deg, #0e7490, #22d3ee); color: #fff; font-size: 1.4rem; margin-bottom: 1rem; }
+    .the-nb h3 { font-size: 1.2rem; font-weight: 800; color: #0b1a24; }
+    .the-nb p { color: #35505c; margin: 0; }
+    .dai-so-lieu { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 2.5rem; }
+    .so-lieu { text-align: center; padding: 1.1rem .5rem; border-radius: .9rem; background: #0b1a24; color: #fff; }
+    .so-lieu b { display: block; font-size: 2.2rem; line-height: 1.1; color: #22d3ee; }
+    .so-lieu span { font-size: .9rem; color: rgba(255,255,255,.85); }
+    .demo-khoi { padding: 4rem 0; background: #fff; }
+    .demo-khoi h2 { font-weight: 800; color: #0b1a24; }
+    .khung-video { border-radius: 1rem; overflow: hidden; background: #0b1a24; aspect-ratio: 16 / 9; display: grid;
+                   place-items: center; color: rgba(255,255,255,.85); text-align: center; padding: 1rem; }
+    .khung-video video { width: 100%; height: 100%; display: block; }
+    .the-qr { text-align: center; border: 2px dashed #0e7490; border-radius: 1rem; padding: 1.4rem; background: #f4fbfd; }
+    .the-qr .qr-hinh { width: min(220px, 70%); margin: 0 auto; background: #fff; padding: .4rem; border-radius: .5rem; }
+    .the-qr .qr-hinh svg { width: 100%; height: auto; display: block; }
+    .the-qr code { word-break: break-all; color: #0b5e74; }
+    .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+    .reveal.hien { opacity: 1; transform: none; }
+    html:not(.co-js) .reveal { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+    @media (max-width: 767px) { .dai-so-lieu { grid-template-columns: repeat(2, 1fr); } }
+  </style>
 </head>
 <body id="page-top">
   <nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
@@ -30,6 +66,7 @@
       </button>
       <div class="collapse navbar-collapse" id="navbarResponsive">
         <ul class="navbar-nav ms-auto">
+          <li class="nav-item"><a class="nav-link" href="#noi-bat">Điểm nổi bật</a></li>
           <li class="nav-item"><a class="nav-link" href="#about">Giới thiệu</a></li>
           <li class="nav-item"><a class="nav-link" href="#cach">Cách bảo vệ</a></li>
           <li class="nav-item"><a class="nav-link" href="#nguyen-tac">Năm nguyên tắc</a></li>
@@ -43,12 +80,69 @@
       <div class="d-flex justify-content-center">
         <div class="text-center">
           <h1 class="mx-auto my-0 text-uppercase">Giám sát kỳ thi</h1>
-          <h2 class="text-white-50 mx-auto mt-2 mb-5">Giám sát tự động trong kỳ thi trực tuyến thời đại AI. Minh bạch, giảm báo nhầm, giữ cho phán đoán của giáo viên không phụ thuộc vào máy.</h2>
-          <a class="btn btn-primary" href="/vao">Vào hệ thống</a>
+          <h2 class="mo-ta-masthead mx-auto mt-2 mb-5">Giám sát tự động trong kỳ thi trực tuyến thời đại AI. Minh bạch, giảm báo nhầm, giữ cho phán đoán của giáo viên không phụ thuộc vào máy.</h2>
+          <div class="nut-hanh-dong">
+            <a class="btn btn-primary" href="/vao">Vào hệ thống</a>
+            <a class="btn btn-qr" href="#qr"><i class="fas fa-qrcode me-1"></i> Quét QR trải nghiệm</a>
+          </div>
         </div>
       </div>
     </div>
   </header>
+
+  <section class="noi-bat" id="noi-bat">
+    <div class="container px-4 px-lg-5">
+      <div class="text-center mb-5 reveal">
+        <h2>Ba điểm nổi bật</h2>
+        <p class="lead mb-0">Thiết kế để học sinh yên tâm và giáo viên vẫn là người quyết định.</p>
+      </div>
+      <div class="row g-4">
+        <div class="col-md-4 reveal"><div class="the-nb">
+          <div class="bt"><i class="fas fa-arrows-rotate"></i></div>
+          <h3>Chu trình ba giai đoạn</h3>
+          <p>Trước thi: học sinh xem hướng dẫn và xác nhận. Trong thi: hỗ trợ ngay khi cần. Sau thi: xem lại bằng chứng và gửi phản hồi trong thời hạn.</p>
+        </div></div>
+        <div class="col-md-4 reveal"><div class="the-nb">
+          <div class="bt"><i class="fas fa-shield-halved"></i></div>
+          <h3>Bảo mật tại thiết bị</h3>
+          <p>Nhận diện chạy ngay trong trình duyệt của học sinh. Video không rời khỏi máy; chỉ có mốc thời gian và một ảnh nhỏ khi có dấu hiệu được gửi lên.</p>
+        </div></div>
+        <div class="col-md-4 reveal"><div class="the-nb">
+          <div class="bt"><i class="fas fa-scale-balanced"></i></div>
+          <h3>Minh bạch tiêu chí</h3>
+          <p>Bốn dấu hiệu và ngưỡng thời gian được công bố trước khi làm bài. Cảnh báo không tự trừ điểm; giáo viên quyết định cuối cùng.</p>
+        </div></div>
+      </div>
+      <div class="dai-so-lieu reveal" aria-label="Những con số về thiết kế">
+        <div class="so-lieu"><b>4</b><span>dấu hiệu được ghi nhận</span></div>
+        <div class="so-lieu"><b>2</b><span>vòng phán đoán của giáo viên</span></div>
+        <div class="so-lieu"><b>0</b><span>video rời khỏi máy học sinh</span></div>
+        <div class="so-lieu"><b>5</b><span>nguyên tắc thiết kế</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="demo-khoi" id="qr">
+    <div class="container px-4 px-lg-5">
+      <div class="row g-4 align-items-center">
+        <div class="col-lg-7 reveal">
+          <h2 class="mb-3">Xem hướng dẫn sử dụng</h2>
+          <div class="khung-video" id="khung-video">
+            <div id="video-cho"><i class="fas fa-circle-play fa-3x mb-2"></i><br>Video hướng dẫn sẽ có ở đây.</div>
+          </div>
+        </div>
+        <div class="col-lg-5 reveal">
+          <div class="the-qr">
+            <h3 class="h4 fw-bold" style="color:#0b1a24">Quét QR trải nghiệm</h3>
+            <p class="mb-3" style="color:#35505c">Dùng camera điện thoại quét mã để mở thẳng trang vào hệ thống.</p>
+            <div class="qr-hinh" id="qr-hinh" role="img" aria-label="Mã QR mở trang vào hệ thống"></div>
+            <p class="mt-3 mb-1 small" style="color:#35505c">Hoặc mở: <code id="qr-url"></code></p>
+            <p class="small mb-0" id="qr-ghi-chu" style="color:#8a4b00"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <section class="about-section text-center" id="about">
     <div class="container px-4 px-lg-5">
@@ -127,5 +221,66 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="/static/da2/js/scripts.js"></script>
+  <script src="/static/vendor/qrcode.js"></script>
+  <script>
+    (function () {
+      document.documentElement.classList.add("co-js");
+
+      // Mã QR dựng ngay trong trình duyệt, không gọi dịch vụ bên ngoài.
+      var url = location.origin + "/vao";
+      var qr = qrcode(0, "M"); qr.addData(url); qr.make();
+      document.getElementById("qr-hinh").innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2 });
+      document.getElementById("qr-url").textContent = url;
+      if (/^(localhost|127\.|\[::1\])/.test(location.hostname)) {
+        document.getElementById("qr-ghi-chu").textContent =
+          "Trang đang mở bằng địa chỉ trên máy này nên điện thoại quét sẽ không vào được. Mã chỉ dùng được khi trang chạy ở địa chỉ mà điện thoại truy cập được.";
+      }
+
+      // Video hướng dẫn: chỉ hiện khi tệp đã có. Chỉ dựng SAU khi trang tải xong, vì một phần
+      // tử video đang tải siêu dữ liệu giữ sự kiện load; trình duyệt không giải mã được định
+      // dạng (ví dụ Safari cũ) sẽ làm cả trang "đang tải" mãi.
+      var nguon = "/static/da2/demo-su-dung.webm";
+      var khungVideo = document.getElementById("khung-video");
+      var baoKhongPhat = function () {
+        khungVideo.innerHTML = '<div>Trình duyệt này chưa phát được video. ' +
+          '<a href="' + nguon + '" download style="color:#22d3ee">Tải video về xem</a>.</div>';
+      };
+      var dungVideo = function () {
+        fetch(nguon, { method: "HEAD" }).then(function (r) {
+          if (!r.ok) return;
+          var v = document.createElement("video");
+          v.controls = true; v.preload = "metadata"; v.playsInline = true;
+          // Trình duyệt chỉ cho tự phát khi tắt tiếng; video hướng dẫn không có tiếng nên không mất gì.
+          v.muted = true; v.loop = true;
+          v.setAttribute("aria-label", "Video hướng dẫn sử dụng");
+          v.addEventListener("error", baoKhongPhat);
+          v.src = nguon;
+          khungVideo.innerHTML = ""; khungVideo.appendChild(v);
+          // Tự phát khi cuộn tới, dừng khi cuộn đi; người chọn giảm chuyển động thì để họ tự bấm phát.
+          var giamChuyenDong = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+          if (!giamChuyenDong && "IntersectionObserver" in window) {
+            new IntersectionObserver(function (ds) {
+              ds.forEach(function (d) {
+                if (d.isIntersecting) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }
+                else v.pause();
+              });
+            }, { threshold: 0.5 }).observe(v);
+          }
+          // Có trình duyệt không báo lỗi mà chỉ đứng yên: sau 8 giây chưa có gì thì báo.
+          setTimeout(function () { if (v.readyState === 0 && !v.error) baoKhongPhat(); }, 8000);
+        }).catch(function () {});
+      };
+      if (document.readyState === "complete") dungVideo(); else addEventListener("load", dungVideo);
+
+      // Hiệu ứng xuất hiện khi cuộn (đã tắt bằng CSS khi người dùng chọn giảm chuyển động).
+      var cac = document.querySelectorAll(".reveal");
+      if (!("IntersectionObserver" in window)) { cac.forEach(function (e) { e.classList.add("hien"); }); return; }
+      var theoDoi = new IntersectionObserver(function (ds) {
+        ds.forEach(function (d) { if (d.isIntersecting) { d.target.classList.add("hien"); theoDoi.unobserve(d.target); } });
+      }, { threshold: 0.12 });
+      cac.forEach(function (e) { theoDoi.observe(e); });
+    })();
+  </script>
+
 </body>
 </html>

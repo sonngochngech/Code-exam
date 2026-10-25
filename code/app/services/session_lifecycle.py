@@ -54,6 +54,10 @@ def transition(session_id: int, target: str) -> dict:
             raise HTTPException(404, "Không tìm thấy ca thi")
         if (session["trang_thai"], target) not in allowed:
             raise HTTPException(409, "Chuyển trạng thái ca thi không hợp lệ")
+        if target == "mo" and not connection.execute(
+                "SELECT 1 FROM cau_trac_nghiem WHERE de_thi=? LIMIT 1",
+                (session["de_thi"],)).fetchone():                       # M9a
+            raise HTTPException(409, "Đề thi chưa có câu hỏi nào nên chưa mở ca được")
         if target == "mo" and session["ma_nghien_cuu_cap"]:
             _validate_paired_study(connection, session)
         now = db.bay_gio()

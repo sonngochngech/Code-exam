@@ -18,7 +18,7 @@ const API = {
     } catch (e) {}
     const r = await fetch(duong_dan, tuy_chon);
     // Hết phiên hoặc chưa đăng nhập: xóa phiên và đưa về trang chủ.
-    if (r.status === 401) {
+    if (r.status === 401 && duong_dan !== "/api/dang-nhap") {   // L1: sai mã không phải hết phiên
       Phien.xoa();
       if (location.pathname !== "/vao") location.href = "/vao";
       throw new Error("Phiên đã hết hạn, em đăng nhập lại nhé.");
@@ -41,6 +41,44 @@ const API = {
   put(d, x) { return this.goi(d, "PUT", x); },
   xoa(d) { return this.goi(d, "DELETE"); },
 };
+
+// Mã ngẫu nhiên cho mỗi mốc gửi lên máy chủ (M6). Không dùng crypto.randomUUID vì
+// nó chỉ có trên trang https hoặc localhost, mà điện thoại có thể vào bằng địa chỉ http.
+function maMocMoi() {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
+}
+
+// Trên điện thoại bảng thành thẻ (xem style.css); mỗi ô lấy nhãn cột từ tiêu đề bảng.
+// Bảng được vẽ lại bất cứ lúc nào nên theo dõi thay đổi thay vì gọi một lần.
+function ganNhanBang() {
+  document.querySelectorAll(".cuon-ngang table").forEach(bang => {
+    const tieuDe = Array.from(bang.querySelectorAll("thead th")).map(t => t.textContent.trim());
+    bang.querySelectorAll("tbody tr").forEach(hang => {
+      Array.from(hang.children).forEach((o, i) => {
+        if (o.tagName === "TD" && o.dataset.label === undefined) o.dataset.label = tieuDe[i] || "";
+      });
+    });
+  });
+}
+let henGioNhanBang = null;
+new MutationObserver(() => {
+  clearTimeout(henGioNhanBang);
+  henGioNhanBang = setTimeout(ganNhanBang, 30);
+}).observe(document.documentElement, { childList: true, subtree: true });
+
+// ------------------------------------------------------------ ảnh bằng chứng
+// C3: ảnh chỉ được đưa vào trang qua thuộc tính src của phần tử img, sau khi kiểm
+// đúng dạng data URL jpeg/png. Không bao giờ ghép chuỗi ảnh vào innerHTML.
+const DANG_ANH_AN_TOAN = /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$/;
+function dungAnhAnToan(nguon, alt, kieu = "") {
+  if (typeof nguon !== "string" || !DANG_ANH_AN_TOAN.test(nguon)) return null;
+  const img = document.createElement("img");
+  img.src = nguon;
+  img.alt = alt;
+  img.style.cssText = kieu;
+  return img;
+}
 
 // ------------------------------------------------------------ phiên đăng nhập
 // Lưu ngay trên máy người dùng. Mọi thao tác bọc try vì trình duyệt có thể
@@ -86,6 +124,20 @@ const BIEU_TUONG = {
         '<path d="M14 4.5 15 6M19 3l-1.5 2M21 9l-2-.5M17 12l1.5 1"/>',
   khoa: '<rect x="4" y="10" width="16" height="11" rx="2.5"/>' +
         '<path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+  tai_lieu: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/>' +
+            '<path d="M14 3v5h5M9 13h6M9 17h6"/>',
+  ai: '<path d="m12 3 1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4Z"/>' +
+      '<path d="m19 15 .8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8Z"/>',
+  ra_ngoai: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
+  mat_mang: '<path d="M5 12.9a10 10 0 0 1 5.2-2.7M19 12.9a10 10 0 0 0-2.4-1.8M8.5 16.4a5 5 0 0 1 7 0"/>' +
+            '<path d="M2 8.8A15 15 0 0 1 6.2 6.2M22 8.8A15 15 0 0 0 12 5M12 20h.01M2 2l20 20"/>',
+  khien: '<path d="m12 3 8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6Z"/><path d="m9 12 2 2 4-4"/>',
+  nguoi: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/>' +
+         '<path d="M17 4.6a3.5 3.5 0 0 1 0 6.8M21.5 20a6.5 6.5 0 0 0-3.5-5.8"/>',
+  canh_bao: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/>' +
+            '<path d="M12 9v4M12 17h.01"/>',
+  ho_tro: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  may_tinh: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
 };
 
 function icon(ten, lop = "") {
@@ -104,6 +156,13 @@ function tao(the, lop, chu) {
 function thoat(s) {
   return String(s ?? "").replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Đưa một giá trị vào chuỗi JavaScript nằm trong thuộc tính HTML, ví dụ
+// onclick="ham(${thoatJs(x)})" (L9). thoat() một mình không đủ: trình duyệt giải mã
+// &#39; thành dấu nháy trước khi chạy JS. Ở đây giá trị thành chuỗi JSON rồi mới thoát HTML.
+function thoatJs(s) {
+  return thoat(JSON.stringify(String(s ?? "")));
 }
 
 function dinhDangGiay(giay) {

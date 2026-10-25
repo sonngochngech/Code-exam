@@ -79,7 +79,7 @@ def _goi_claude(system: str, tin_nhan: list[dict]) -> str:
     except anthropic.APIStatusError as e:
         if e.status_code >= 500:
             raise LoiGoiAI("Máy chủ AI đang gặp sự cố, em thử lại sau nhé") from e
-        raise LoiGoiAI(f"Lỗi gọi AI: {e.message}") from e
+        raise LoiGoiAI(f"Lỗi gọi AI (mã {e.status_code}), thầy cô kiểm tra lại cấu hình") from e
     except anthropic.APIConnectionError as e:
         raise LoiGoiAI("Không kết nối được tới máy chủ AI. Kiểm tra mạng.") from e
 

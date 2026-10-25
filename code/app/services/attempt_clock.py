@@ -5,8 +5,9 @@ and the closed-session rule are all decided here, so a student cannot keep
 working by ignoring the page.
 
 Assumptions (prototype):
-- The clock starts when the student presses start (POST .../bat-dau); a final
-  submission with no start record starts it at that moment.
+- The clock starts when the student presses start (POST .../bat-dau). Without a
+  start record the submission deadline runs from when the paper was handed out
+  (GET .../de), or from when the session opened (C6).
 - A submission is accepted up to GRACE_SECONDS after the deadline (network
   latency / offline-queue replay). Later submissions are rejected.
 - Closing the session ends every attempt: the student may still send one final
@@ -25,7 +26,7 @@ GRACE_SECONDS = 120
 
 
 def _t(text: str) -> datetime:
-    return datetime.fromisoformat(text)
+    return db.doc_gio(text)
 
 
 def require_guidance_confirmed(conn, session_id: int, student: str) -> None:
@@ -52,6 +53,19 @@ def require_round_one_open(conn, session_id: int, student: str) -> None:
         raise HTTPException(409, "Giáo viên đã khóa phán đoán vòng 1; ca này không nhận thêm lượt làm bài mới. Em báo giáo viên hoặc chọn ca khác.")
 
 
+def note_issued(conn, session_id: int, student: str, shuffled: bool = True) -> None:
+    """C6: remember when the paper was first handed out (and, for M2, how it was shuffled).
+
+    It is only a fallback anchor for the submission deadline. The student's own clock
+    still starts at 'start', because the guidance and the camera check come between
+    receiving the paper and starting it.
+    """
+    conn.execute(
+        "INSERT OR IGNORE INTO phat_de (ca_thi,hoc_sinh,luc,tron) VALUES (?,?,?,?)",
+        (session_id, student, db.bay_gio(), int(shuffled)),
+    )
+
+
 def start(conn, session_id: int, student: str) -> None:
     conn.execute(
         "INSERT OR IGNORE INTO luot_lam_bai (ca_thi,hoc_sinh,bat_dau) VALUES (?,?,?)",
@@ -62,12 +76,15 @@ def start(conn, session_id: int, student: str) -> None:
 def snapshot(conn, session_id: int, student: str) -> dict:
     """Return the server's view of one student's attempt at this moment."""
     session = conn.execute(
-        "SELECT c.trang_thai,c.ket_thuc,d.so_phut FROM ca_thi c"
+        "SELECT c.trang_thai,c.ket_thuc,c.bat_dau AS mo_luc,d.so_phut FROM ca_thi c"
         " JOIN de_thi d ON d.id=c.de_thi WHERE c.id=?", (session_id,)).fetchone()
     if not session:
         raise HTTPException(404, "Không tìm thấy ca thi")
     started = conn.execute(
         "SELECT bat_dau FROM luot_lam_bai WHERE ca_thi=? AND hoc_sinh=?",
+        (session_id, student)).fetchone()
+    issued = conn.execute(
+        "SELECT luc FROM phat_de WHERE ca_thi=? AND hoc_sinh=?",
         (session_id, student)).fetchone()
     submitted = conn.execute(
         "SELECT diem FROM bai_lam WHERE ca_thi=? AND hoc_sinh=? ORDER BY id LIMIT 1",
@@ -90,19 +107,27 @@ def snapshot(conn, session_id: int, student: str) -> dict:
         paused_total += (now - paused_since).total_seconds()
 
     closed = session["trang_thai"] == "dong"
-    remaining = None
-    if started:
-        used = (now - _t(started["bat_dau"])).total_seconds() - paused_total
-        remaining = session["so_phut"] * 60 + extra - used
+
+    def left_from(anchor: str) -> float:
+        used = (now - _t(anchor)).total_seconds() - paused_total
+        value = session["so_phut"] * 60 + extra - used
         if closed and session["ket_thuc"]:
-            remaining = min(remaining, (_t(session["ket_thuc"]) - now).total_seconds())
+            value = min(value, (_t(session["ket_thuc"]) - now).total_seconds())
+        return value
+
+    remaining = left_from(started["bat_dau"]) if started else None
+    # C6: with no start record the deadline still exists. It runs from the moment the
+    # paper was handed out, or failing that from the moment the session opened.
+    fallback_anchor = None if started else (issued["luc"] if issued else session["mo_luc"])
+    gate_remaining = remaining if started else (
+        left_from(fallback_anchor) if fallback_anchor else None)
     return {
         "da_bat_dau": bool(started), "tam_dung": paused, "them_giay": extra,
         "ca_dong": closed, "da_nop": bool(submitted),
         "diem": submitted["diem"] if submitted else None,
         "con_lai_giay": None if remaining is None else max(0, int(remaining)),
         "het_gio": remaining is not None and remaining <= 0,
-        "qua_han_nop": remaining is not None and remaining < -GRACE_SECONDS,
+        "qua_han_nop": gate_remaining is not None and gate_remaining < -GRACE_SECONDS,
         "trang_thai_ca": session["trang_thai"],
     }
 

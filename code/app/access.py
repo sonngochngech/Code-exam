@@ -42,3 +42,26 @@ def require_session_assignment(session_id: int, user: dict, role: str | None = N
     if not row:
         raise HTTPException(403, "Bạn không được phân công vào ca thi này.")
 
+
+def visible_students_sql() -> str:
+    """Subquery of the student codes a teacher may look at (L3, C2).
+
+    A student is visible when they are in the teacher's own class or share a session
+    with the teacher. Parameters, in order: the teacher's class, the teacher's code.
+    """
+    return ("SELECT ma FROM nguoi_dung WHERE vai_tro='hoc_sinh' AND lop=?"
+            " UNION SELECT s.nguoi_dung FROM ca_thi_nguoi_dung t JOIN ca_thi_nguoi_dung s"
+            " ON s.ca_thi=t.ca_thi AND s.vai_tro_trong_ca='hoc_sinh'"
+            " WHERE t.nguoi_dung=? AND t.vai_tro_trong_ca='giao_vien'")
+
+
+def require_shared_session(teacher: dict, student: str) -> None:
+    """A teacher may look at one student's data only for their own class or shared session."""
+    with db.ket_noi() as connection:
+        row = connection.execute(
+            f"SELECT 1 WHERE ? IN ({visible_students_sql()})",
+            (student, teacher.get("lop"), teacher["ma"]),
+        ).fetchone()
+    if not row:
+        raise HTTPException(403, "Học sinh này không thuộc lớp hoặc ca thi bạn phụ trách.")
+

@@ -13,11 +13,13 @@ from __future__ import annotations
 from collections import Counter
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import access, config, db
+from ..limits import Seconds, ShortText
 from ..auth import chi_giao_vien, nguoi_dung_hien_tai
-from ..services import attempt_clock, audit, evidence, judgments, monitoring_config, session_lifecycle
+from ..services import (attempt_clock, audit, evidence, images, judgments,
+                        monitoring_config, session_lifecycle)
 
 # Mọi endpoint cần đăng nhập; phần tổng hợp, ảnh bằng chứng và phán đoán của
 # giáo viên thêm quyền giáo viên.
@@ -34,11 +36,13 @@ TEN_LOAI["roi_toan_man_hinh"] = "Rời chế độ toàn màn hình"
 
 class MocMoi(BaseModel):
     ca_thi: int
-    hoc_sinh: str
-    loai: str
-    giay: float
-    keo_dai: float | None = None
+    hoc_sinh: ShortText
+    loai: ShortText
+    giay: Seconds
+    keo_dai: Seconds | None = None
     anh: str | None = None           # ảnh bằng chứng, dạng chuỗi base64
+    # M6: mã do trình duyệt sinh cho mỗi mốc, để gửi lại không tạo bản trùng.
+    client_moc_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9-]{8,64}$")
 
 
 @router.post("/moc")
@@ -48,18 +52,28 @@ def ghi_moc(m: MocMoi, nd: dict = Depends(nguoi_dung_hien_tai)):
     access.require_session_assignment(m.ca_thi, nd, "hoc_sinh")
     if m.loai not in TEN_LOAI:
         raise HTTPException(400, f"Loại dấu hiệu không hợp lệ: {m.loai}")
+    anh = images.require_safe(m.anh)
     with db.ket_noi() as conn:
         session_lifecycle.require_open(conn, m.ca_thi)
         attempt_clock.require_working(conn, m.ca_thi, hoc_sinh)
         cfg = monitoring_config.latest(conn, m.ca_thi)
         threshold_key = monitoring_config.EVENT_THRESHOLD[m.loai]
         cur = conn.execute(
-            "INSERT INTO moc_bat_thuong (ca_thi,hoc_sinh,loai,giay,keo_dai,anh,"
-            " nguong_ap_dung,phien_ban_cau_hinh,tao_luc) VALUES (?,?,?,?,?,?,?,?,?)",
-            (m.ca_thi, hoc_sinh, m.loai, m.giay, m.keo_dai, m.anh,
-             cfg[threshold_key], cfg["phien_ban"], db.bay_gio()),
+            "INSERT OR IGNORE INTO moc_bat_thuong (ca_thi,hoc_sinh,loai,giay,keo_dai,anh,"
+            " nguong_ap_dung,phien_ban_cau_hinh,client_moc_id,tao_luc)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (m.ca_thi, hoc_sinh, m.loai, m.giay, m.keo_dai, anh,
+             cfg[threshold_key], cfg["phien_ban"], m.client_moc_id, db.bay_gio()),
         )
-    return {"da_ghi": True, "moc_id": cur.lastrowid}
+        if cur.rowcount:
+            return {"da_ghi": True, "moc_id": cur.lastrowid}
+        # M6: mốc này đã được lưu từ lần gửi trước; trả lại đúng mốc đó.
+        existing = conn.execute(
+            "SELECT id FROM moc_bat_thuong WHERE ca_thi=? AND hoc_sinh=? AND client_moc_id=?",
+            (m.ca_thi, hoc_sinh, m.client_moc_id)).fetchone()
+    if not existing:                      # bị bỏ qua vì lý do khác, không phải do gửi trùng
+        raise HTTPException(400, "Không ghi được mốc này")
+    return {"da_ghi": True, "moc_id": existing["id"], "trung": True}
 
 
 @router.get("/nguong")
@@ -118,7 +132,7 @@ def lay_anh(moc_id: int, _u: dict = Depends(chi_giao_vien)):
     with db.ket_noi() as conn:
         audit.log(conn, _u["ma"], "xem_bang_chung", "moc_bat_thuong",
                   moc_id, d["ca_thi"])
-    return {"anh": d["anh"]}
+    return {"anh": images.safe_data_url(d["anh"])}
 
 
 @router.get("/ca/{ca_id}/danh-sach-hoc-sinh")

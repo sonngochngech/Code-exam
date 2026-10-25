@@ -14,6 +14,8 @@
   @media(max-width:520px){#bang-ho-tro{left:4vw;right:4vw;width:auto}}
   /* Thanh điều hướng dưới (<=900px) cao 68px, z-index 80: đưa nút/bảng hỗ trợ lên trên nó. */
   #nut-ho-tro,#bang-ho-tro{z-index:96}
+  #dong-ho{font-size:2.4rem;line-height:1.05;letter-spacing:.01em}
+  #dong-ho.sap-het{color:#b45309}
   @media(max-width:900px){
     #nut-ho-tro{bottom:86px}
     #bang-ho-tro{bottom:140px}
@@ -23,6 +25,14 @@
 <body>
 
 <div class="khung">
+
+  <!-- Thanh tiến trình: em đang ở bước nào (Phiếu 1.2) -->
+  <ol class="tien-trinh" id="tien-trinh" aria-label="Các bước làm bài">
+    <li data-buoc="1"><span class="so">1</span><span class="ten">Chọn ca</span></li>
+    <li data-buoc="2"><span class="so">2</span><span class="ten">Hướng dẫn</span></li>
+    <li data-buoc="3"><span class="so">3</span><span class="ten">Kiểm tra thiết bị</span></li>
+    <li data-buoc="4"><span class="so">4</span><span class="ten">Làm bài</span></li>
+  </ol>
 
   <!-- Bước 1: chọn ca thi -->
   <div id="b1" class="the">
@@ -36,6 +46,7 @@
       <button id="nut-tiep">Tiếp tục</button>
     </div>
     <p id="ca-goi-y" class="mo-nho cach-nho" aria-live="polite"></p>
+    <div id="ca-rong" class="an"></div>
   </div>
 
   <!-- Không vào được ca thi: luôn có đường đi tiếp -->
@@ -122,11 +133,16 @@
           <div class="thanh luc cach-nho"><i id="thanh-tien-do" style="width:0%"></i></div>
         </div>
         <div style="text-align:right;flex:0 0 auto">
-          <div class="dong-ho" id="dong-ho">--:--</div>
+          <div class="dong-ho" id="dong-ho" role="timer" aria-live="off">--:--</div>
           <div class="mo-nho">còn lại</div>
         </div>
       </div>
       <div class="luoi-cau cach-nho" id="luoi-cau"></div>
+      <div class="chu-giai-luoi" aria-hidden="true">
+        <span><i class="cham-xong"></i> Đã làm</span>
+        <span><i class="cham-xem"></i> Đang xem</span>
+        <span><i class="cham-chua"></i> Chưa làm</span>
+      </div>
     </div>
 
     <div class="luoi" id="khu-lam-bai" style="align-items:start">
@@ -134,6 +150,7 @@
 
       <div id="o-camera" class="the an" style="position:sticky;top:300px">
         <h3 style="margin-top:0">Camera</h3>
+        <p class="mo-nho" style="margin:-6px 0 10px">Hình ảnh chỉ xử lý trên máy của em, không gửi video lên máy chủ.</p>
         <div class="khung-camera">
           <video id="video" autoplay playsinline muted></video>
           <div class="den-bao" id="den-bao">
@@ -240,7 +257,7 @@ let cameraOk = false, moHinhOk = false;
 let resilience = null;
 let tamDung = false, conLaiMay = null, moDongBo = 0, daKhoa = false;
 let suKien = [];
-const traLoi = {}, anhXa = {};
+const traLoi = {};
 
 // ------------------------------------------------------------ chọn ca thi
 const sel = document.getElementById("ca");
@@ -280,14 +297,46 @@ try {
   } else {
     sel.innerHTML = '<option value="">Chưa có ca thi nào</option>';
     nutTiep.disabled = true;
-    document.getElementById("ca-goi-y").textContent =
-      "Em chưa được phân công vào ca thi nào. Em báo giáo viên để được thêm vào ca.";
+    document.querySelector("#b1 .hang").classList.add("an");
+    document.getElementById("ca-goi-y").textContent = "";
+    const rong = document.getElementById("ca-rong");
+    rong.innerHTML = trongRong("bai", "Em chưa có ca thi nào",
+      "Đây là các bước để vào một ca thi:") + `
+      <ol class="huong-dan-vao">
+        <li>Giáo viên tạo ca thi và thêm em vào danh sách.</li>
+        <li>Giáo viên mở ca và gửi cho em mã dự thi riêng.</li>
+        <li>Em nhập mã dự thi ở trang đăng nhập, rồi quay lại đây để chọn ca.</li>
+      </ol>
+      <div class="hang cach" style="justify-content:center">
+        <a class="nut" href="/vao" id="nhap-ma-khac">Nhập mã dự thi</a>
+        <a class="nut phu" href="/">Về trang chủ</a>
+      </div>`;
+    rong.classList.remove("an");
+    document.getElementById("nhap-ma-khac").onclick = () => Phien.xoa();
   }
 } catch (e) {
   sel.innerHTML = '<option value="">Không tải được danh sách</option>';
   nutTiep.disabled = true;
   thongBao(e.message, "loi");
 }
+
+// Thanh tiến trình theo dõi phần nào của trang đang hiện, nên không phải sửa từng chỗ chuyển bước.
+const BUOC_HIEN = [["b1", 1], ["b-hd", 2], ["b2", 3], ["b3", 4]];
+function capNhatTienTrinh() {
+  let buoc = 1;
+  if (!document.getElementById("b4").classList.contains("an")) buoc = 5;      // đã nộp: xong cả bốn bước
+  else for (const [id, n] of BUOC_HIEN) if (!document.getElementById(id).classList.contains("an")) buoc = n;
+  document.querySelectorAll("#tien-trinh li").forEach(li => {
+    const n = Number(li.dataset.buoc);
+    li.classList.toggle("xong", n < buoc);
+    li.classList.toggle("hien", n === buoc);
+    if (n === buoc) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+  });
+}
+const quanSat = new MutationObserver(capNhatTienTrinh);
+["b1", "b-hd", "b2", "b3", "b4"].forEach(id =>
+  quanSat.observe(document.getElementById(id), { attributes: true, attributeFilter: ["class"] }));
+capNhatTienTrinh();
 
 // Màn hình lỗi có lối đi tiếp thay cho một thông báo thoáng qua.
 function hienLoiVao(tieuDe, noiDung) {
@@ -302,11 +351,15 @@ document.getElementById("nut-tiep").onclick = async () => {
   const id = sel.value;
   if (!id) { thongBao("Chưa có ca thi nào để vào", "loi"); return; }
   try {
+    // M7b: bài nộp còn kẹt trong hàng đợi (mất mạng, ca vừa đóng) được gửi lại ngay khi
+    // vào trang, trước cả việc tải đề, vì ca đã đóng thì không tải được đề nữa.
+    resilience = createExamResilience(nd.ma, Number(id));
+    resilience.onStorageError = canhBaoLuuTru;
+    await retryQueued();
     // Đã nộp rồi (mở lại trang hoặc đăng nhập lại sau thi): đi thẳng tới kết quả và phản hồi.
     const trangThai = await API.get(`/api/attempt-control/ca/${id}/cua-toi`);
     if (trangThai.da_nop) {
       caThi = Number(id);
-      resilience = createExamResilience(nd.ma, caThi);
       document.getElementById("b1").classList.add("an");
       daNop = true;
       hoanTatNop({ diem: trangThai.diem });
@@ -314,7 +367,6 @@ document.getElementById("nut-tiep").onclick = async () => {
     }
     deThi = await API.get(`/api/exam/ca/${id}/de?hoc_sinh=${encodeURIComponent(nd.ma)}`);
     caThi = Number(id);
-    resilience = createExamResilience(nd.ma, caThi);
     nguong = deThi.nguong;                 // ngưỡng theo mức giám sát của ca
   } catch (e) { hienLoiVao("Chưa vào được ca thi", e.message); return; }
 
@@ -331,7 +383,7 @@ function sauHuongDan() {
   } else vaoLamBai(false);
 }
 
-let hdVideoXong = false, hdVideoLoi = false, hdBanChuXong = false, hdCauDung = false;
+let hdVideoXong = false, hdVideoLoi = false, hdBanChuXong = false, hdCauDung = false, hdLuaChon = "";
 (function capCong() {
   const v = document.getElementById("video-hd");
   const nut = document.getElementById("nut-hd");
@@ -354,12 +406,19 @@ let hdVideoXong = false, hdVideoLoi = false, hdBanChuXong = false, hdCauDung = f
   // Dự phòng: sau 3 giây mà không nạp được video thì coi như không có video,
   // cho tiếp tục bằng bản chữ. Có video thật thì vẫn phải xem hết (nút ended).
   setTimeout(() => { if (!coVideo && !hdVideoXong) { hdVideoLoi = true; capNhat(); } }, 3000);
+  // M4: đáp án chỉ nằm ở máy chủ; trang hỏi "đúng hay sai" và nhận lại một chữ có/không.
   document.querySelectorAll('input[name="hd-q"]').forEach(r =>
-    r.addEventListener("change", () => {
-      hdCauDung = r.value === "b";
-      document.getElementById("hd-cham").innerHTML = hdCauDung
-        ? '<span class="nhan luc">Đúng rồi</span>'
-        : '<span class="nhan cam">Chưa đúng, em chọn lại nhé</span>';
+    r.addEventListener("change", async () => {
+      hdLuaChon = r.value;
+      hdCauDung = false; capNhat();
+      try {
+        const kq = await API.post(`/api/tuong-tac/truoc-thi/ca/${caThi}/cham-cau`, { tra_loi: r.value });
+        if (hdLuaChon !== r.value) return;          // em đã đổi ý trong lúc chờ
+        hdCauDung = kq.dung;
+        document.getElementById("hd-cham").innerHTML = hdCauDung
+          ? '<span class="nhan luc">Đúng rồi</span>'
+          : '<span class="nhan cam">Chưa đúng, em chọn lại nhé</span>';
+      } catch (e) { thongBao(e.message, "loi"); }
       capNhat();
     }));
   document.getElementById("hd-da-doc").addEventListener("change", e => {
@@ -373,7 +432,7 @@ let hdVideoXong = false, hdVideoLoi = false, hdBanChuXong = false, hdCauDung = f
         ca_thi: caThi, da_xem_video: hdVideoXong,
         da_doc_ban_chu: hdBanChuXong,
         phien_ban_huong_dan: deThi.phien_ban_huong_dan,
-        tra_loi_tinh_huong: { q1: "b" }, dong_y: true });
+        tra_loi_tinh_huong: { q1: hdLuaChon }, dong_y: true });
     } catch (e) { thongBao(e.message, "loi"); nut.disabled = false; return; }
     document.getElementById("b-hd").classList.add("an");
     sauHuongDan();
@@ -452,6 +511,7 @@ async function vaoLamBai(coCamera) {
   document.getElementById("b2").classList.add("an");
   document.getElementById("b3").classList.remove("an");
   document.getElementById("nut-ho-tro").classList.remove("an");   // nút hỗ trợ khi làm bài
+  document.body.classList.add("dang-lam-bai");                    // ẩn thanh điều hướng dưới trên điện thoại
   // Chỉ chia hai cột khi thực sự có khung camera bên phải. Không có camera mà
   // vẫn giữ hai cột thì nửa phải trống trơn, nhìn như trang bị lỗi.
   if (coCamera) {
@@ -481,8 +541,6 @@ function dungCauHoi() {
   const luoi = document.getElementById("luoi-cau");
   Object.assign(traLoi, resilience?.loadAnswers() || {});
   deThi.cau_hoi.forEach((c, i) => {
-    anhXa[c.id] = c.anh_xa;
-
     const the = tao("div", "cau");
     the.id = "cau-" + c.id;
     the.innerHTML = `<div class="de"><span class="so-cau">${i + 1}</span>${thoat(c.noi_dung)}</div>`;
@@ -508,19 +566,54 @@ function dungCauHoi() {
 
     const b = tao("button", "", String(i + 1));
     b.id = "nut-cau-" + c.id;
+    b.type = "button";
+    b.setAttribute("aria-label", `Câu ${i + 1}, chưa làm`);
     b.onclick = () => the.scrollIntoView({ behavior: "smooth", block: "center" });
     luoi.appendChild(b);
   });
   capNhatTienDo();
+  theoDoiCauDangXem();
   retryQueued();
+}
+
+// Câu đang xem là câu gần giữa màn hình nhất; ô tương ứng trên lưới sáng lên.
+function theoDoiCauDangXem() {
+  const cac = Array.from(document.querySelectorAll("#ds-cau .cau"));
+  let cho = false, truoc = null;
+  const tinh = () => {
+    cho = false;
+    const giua = innerHeight / 2;
+    let gan = null, kc = Infinity;
+    cac.forEach(the => {
+      const r = the.getBoundingClientRect();
+      const d = r.top <= giua && r.bottom >= giua ? 0 : Math.min(Math.abs(r.top - giua), Math.abs(r.bottom - giua));
+      if (d < kc) { kc = d; gan = the; }
+    });
+    if (!gan || gan === truoc) return;
+    truoc = gan;
+    document.querySelectorAll("#luoi-cau button").forEach(b => {
+      const dang = b.id === "nut-cau-" + gan.id.replace("cau-", "");
+      b.classList.toggle("dang-xem", dang);
+      if (dang) { b.setAttribute("aria-current", "true"); b.scrollIntoView({ block: "nearest", inline: "center" }); }
+      else b.removeAttribute("aria-current");
+    });
+  };
+  const hen = () => { if (!cho) { cho = true; requestAnimationFrame(tinh); } };
+  addEventListener("scroll", hen, { passive: true });
+  addEventListener("resize", hen);
+  tinh();
 }
 
 function capNhatTienDo() {
   const da = Object.keys(traLoi).length, tong = deThi.cau_hoi.length;
   document.getElementById("tien-do").textContent = `Đã làm ${da} trên ${tong} câu`;
   document.getElementById("thanh-tien-do").style.width = (da / tong * 100) + "%";
-  Object.keys(traLoi).forEach(id =>
-    document.getElementById("nut-cau-" + id)?.classList.add("xong"));
+  Object.keys(traLoi).forEach(id => {
+    const nut = document.getElementById("nut-cau-" + id);
+    if (!nut) return;
+    nut.classList.add("xong");
+    nut.setAttribute("aria-label", `Câu ${nut.textContent}, đã làm`);
+  });
 }
 
 // Đồng hồ chỉ hiển thị: lấy số giây còn lại do máy chủ báo rồi đếm lùi tạm giữa
@@ -534,6 +627,7 @@ function demNguoc() {
     if (conLai <= 0) { o.textContent = "00:00"; nopBai(true); return; }
     o.textContent = dinhDangGiay(conLai);
     o.classList.toggle("gap", conLai <= 60);
+    o.classList.toggle("sap-het", conLai <= 300 && conLai > 60);
   }, 500);
 }
 
@@ -723,7 +817,7 @@ async function ghiMoc(loai, keoDai) {
   soMoc++;
   document.getElementById("so-moc").textContent = soMoc;
   const payload = {
-    ca_thi: caThi, hoc_sinh: nd.ma, loai,
+    ca_thi: caThi, hoc_sinh: nd.ma, loai, client_moc_id: maMocMoi(),
     giay: (Date.now() - batDau) / 1000, keo_dai: keoDai,
     anh: ["chuyen_cua_so", "roi_toan_man_hinh"].includes(loai) ? null : chupAnh(),
   };
@@ -739,6 +833,7 @@ async function ghiMoc(loai, keoDai) {
 function hoanTatNop(kq) {
   resilience?.clearAnswers();
   document.getElementById("b3").classList.add("an");
+  document.body.classList.remove("dang-lam-bai");
   document.getElementById("b4").classList.remove("an");
   document.getElementById("nut-ho-tro").classList.add("an");
   document.getElementById("bang-ho-tro").classList.add("an");
@@ -748,13 +843,27 @@ function hoanTatNop(kq) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function canhBaoLuuTru() {
+  thongBao("Trình duyệt không lưu tạm được bài làm. Em giữ nguyên trang này cho đến khi nộp bài.", "loi");
+}
+
 async function retryQueued() {
   if (!resilience || !navigator.onLine) return;
   await resilience.retry(
     (kind, payload) => API.post(kind === "nop" ? "/api/exam/nop" : "/api/proctor/moc", payload),
     (kind, result) => {
-      if (kind === "nop") hoanTatNop(result);
+      if (kind === "nop") {
+        daNop = true;
+        document.getElementById("b1").classList.add("an");
+        clearInterval(heToc); clearInterval(heDongBo);
+        hoanTatNop(result);
+      }
       if (kind === "moc") mocGanNhat = result.moc_id || mocGanNhat;
+    },
+    // Máy chủ từ chối hẳn (quá hạn, ca đã đóng): bỏ khỏi hàng đợi và báo em biết.
+    (kind, loi) => {
+      if (kind === "nop") thongBao("Bài nộp đang chờ không được nhận: " + loi.message
+        + " Em báo giáo viên ngay.", "loi");
     },
   );
 }
@@ -770,7 +879,7 @@ async function nopBai(tuDong = false) {
     if (!ok) return;
   }
   dangNop = true;
-  const payload = { ca_thi: caThi, hoc_sinh: nd.ma, tra_loi: traLoi, anh_xa: anhXa };
+  const payload = { ca_thi: caThi, hoc_sinh: nd.ma, tra_loi: traLoi };   // M2: máy chủ tự dựng thứ tự trộn
   try {
     const kq = await API.post("/api/exam/nop", payload);
     daNop = true;
@@ -878,9 +987,16 @@ window.xemAnhCuaToi = async mocId => {
   const target = document.getElementById(`anh-cua-toi-${mocId}`);
   try {
     const result = await API.get(`/api/tuong-tac/sau-thi/moc/${mocId}/anh`);
-    target.innerHTML = result.anh
-      ? `<img src="${result.anh}" alt="Ảnh bằng chứng sự kiện" style="max-width:180px;border-radius:8px">`
-      : '<span class="mo-nho">Sự kiện này không có ảnh.</span>';
+    const anh = dungAnhAnToan(result.anh, "Ảnh bằng chứng sự kiện",
+      "max-width:180px;border-radius:8px");
+    target.replaceChildren();
+    if (anh) target.appendChild(anh);
+    else {
+      const ghiChu = document.createElement("span");
+      ghiChu.className = "mo-nho";
+      ghiChu.textContent = "Sự kiện này không có ảnh.";
+      target.appendChild(ghiChu);
+    }
   } catch (e) { target.textContent = e.message; }
 };
 

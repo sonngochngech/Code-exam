@@ -31,13 +31,43 @@ async function khoiTao() {
 async function xem() {
   try {
     const d = await API.get(`/api/exam/ca/${chon.value}/thong-tin-cong-khai`);
+    const riengCuaCa = (d.ca_thi.quy_dinh || "").trim();
+    const giaHan = d.ca_thi.cho_phep_gia_han
+      ? ` Giáo viên có thể gia hạn khi có lý do, tổng cộng tối đa ${d.tran_gia_han_phut} phút.`
+      : " Ca này không cho phép gia hạn.";
+    const KHOI = [
+      ["tai_lieu", "Tài liệu và công cụ",
+        "Được dùng gì và không được dùng gì do giáo viên ghi riêng cho từng ca, ở khối “Quy định riêng của ca này” bên dưới. Chưa rõ thì em hỏi trước khi bắt đầu, đừng đoán."],
+      ["ai", "Trí tuệ nhân tạo",
+        "Hệ thống không dùng AI để kết luận ai đó gian lận. Trợ giảng AI chỉ có ở phần Hỏi bài ngoài giờ. Có được dùng AI trong bài thi hay không do quy định riêng của ca."],
+      ["ra_ngoai", "Xin ra ngoài",
+        "Cần ra ngoài thì bấm nút “Cần hỗ trợ” và chọn “Xin ra ngoài”. Giáo viên sẽ ghi lại thời gian gián đoạn để đối chiếu khi xem lại bài."],
+      ["mat_mang", "Mất mạng giữa chừng",
+        "Đáp án em chọn được giữ trên máy và tự gửi lại khi có mạng. Bài nộp lúc mất mạng được xếp hàng chờ gửi. Em báo giáo viên bằng nút “Cần hỗ trợ”, loại “Mất mạng”."],
+      ["dong_ho", "Thời hạn phản hồi",
+        `Sau khi nộp bài, em có ${d.ca_thi.phut_phan_hoi} phút để xem lại những sự kiện hệ thống ghi nhận và gửi giải thích.${giaHan}`],
+    ];
     document.getElementById("ket-qua-info").innerHTML = `
+      <section class="nhan-manh" role="note">
+        <div class="bieu-tuong-lon">${icon("khien")}</div>
+        <div><h2>Cảnh báo không tự trừ điểm</h2>
+          <p><b>${thoat(d.tuyen_bo)}</b></p>
+          <p>${thoat(d.chinh_sach_nghien_cuu)}</p></div>
+      </section>
+      <section class="the"><h2>Năm điều cần biết khi làm bài</h2>
+        <div class="khoi-quy-dinh">${KHOI.map(([ic, tieu_de, noi_dung]) => `
+          <div class="khoi-qd"><div class="bieu-tuong">${icon(ic)}</div>
+            <h3>${thoat(tieu_de)}</h3><p>${thoat(noi_dung)}</p></div>`).join("")}</div></section>
+      <section class="the" id="quy-dinh-rieng"><h2>Quy định riêng của ca này</h2>
+        ${riengCuaCa
+          ? `<p class="quy-dinh-rieng">${thoat(riengCuaCa)}</p>`
+          : '<p class="mo">Giáo viên chưa ghi quy định riêng cho ca này. Em hỏi giáo viên trước khi bắt đầu.</p>'}
+      </section>
       <section class="the"><h2>Bốn tiêu chí được theo dõi</h2>
         <div class="luoi luoi-2">${d.bon_tieu_chi.map(x => `<div class="canh-bao-o">
           <b>${thoat(x.ten)}</b><br><span class="mo-nho">Chỉ ghi nhận khi kéo dài từ ${x.nguong_giay} giây</span>
-        </div>`).join("")}</div><p class="canh-bao-o luc cach-nho"><b>${thoat(d.tuyen_bo)}</b></p>
-        <p class="canh-bao-o tim">${thoat(d.chinh_sach_nghien_cuu)}</p></section>
-      <section class="the"><h2>Điều học sinh cần nhớ</h2>
+        </div>`).join("")}</div></section>
+      <section class="the"><h2>Quyền của học sinh</h2>
         <div class="luoi luoi-3">
           <div class="muc-huong-dan"><b>Minh bạch</b><span>Các tiêu chí được báo trước khi bắt đầu.</span></div>
           <div class="muc-huong-dan"><b>Không tự động kết luận</b><span>Giáo viên là người xem xét và đưa ra quyết định cuối cùng.</span></div>

@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .. import db, llm, rag
+from .. import access, db, llm, rag
 from ..auth import chi_giao_vien, nguoi_dung_hien_tai
 
 # Mọi endpoint cần đăng nhập; riêng sinh đề và xem kho học liệu thêm quyền giáo viên.
@@ -85,15 +85,18 @@ def _dung_boi_canh(doan: list[dict]) -> str:
 
 
 class YeuCauHoi(BaseModel):
-    nguoi_dung: str
+    nguoi_dung: str | None = None     # chỉ để kiểm tra khớp token, không dùng làm danh tính
     cau_hoi: str
     mon: str | None = None
     lich_su: list[dict] = []          # [{"role": ..., "content": ...}]
 
 
 @router.post("/hoi")
-def hoi_bai(yc: YeuCauHoi):
+def hoi_bai(yc: YeuCauHoi, nd: dict = Depends(nguoi_dung_hien_tai)):
     """Học sinh gửi câu hỏi, hệ thống trả về câu gợi mở."""
+    # C2: danh tính lấy từ token; mã gửi kèm chỉ được phép trùng với chính mình.
+    hoc_sinh = (access.student_code(nd, yc.nguoi_dung) if nd["vai_tro"] == "hoc_sinh"
+                else access.teacher_code(nd, yc.nguoi_dung))
     # Bước 1: tìm đoạn học liệu liên quan nhất.
     doan = rag.tim_doan_lien_quan(yc.cau_hoi, yc.mon)
 
@@ -131,7 +134,7 @@ def hoi_bai(yc: YeuCauHoi):
         conn.execute(
             "INSERT INTO cau_hoi (nguoi_dung, mon, noi_dung, tra_loi, chuong,"
             " dang_bai, luot, tao_luc) VALUES (?,?,?,?,?,?,?,?)",
-            (yc.nguoi_dung, yc.mon, yc.cau_hoi, tra_loi, chuong,
+            (hoc_sinh, yc.mon, yc.cau_hoi, tra_loi, chuong,
              dang_bai, luot, db.bay_gio()),
         )
 
@@ -148,9 +151,21 @@ def hoi_bai(yc: YeuCauHoi):
 
 
 @router.get("/lich-su")
-def lich_su_hoi(nguoi_dung: str, gioi_han: int = 30):
+def lich_su_hoi(nguoi_dung: str | None = None, gioi_han: int = 30,
+                nd: dict = Depends(nguoi_dung_hien_tai)):
     """Lịch sử hỏi bài của một học sinh, cho em tự xem lại và cho giáo viên
-    xem khi cần tìm hiểu vì sao em hỏi lặp lại một chỗ."""
+    xem khi cần tìm hiểu vì sao em hỏi lặp lại một chỗ.
+
+    C2: học sinh chỉ xem được của mình; giáo viên chỉ xem được học sinh cùng
+    ca thi được phân công với mình.
+    """
+    gioi_han = max(1, min(gioi_han, 100))
+    if nd["vai_tro"] == "hoc_sinh":
+        nguoi_dung = access.student_code(nd, nguoi_dung)
+    else:
+        if not nguoi_dung:
+            raise HTTPException(400, "Cần chỉ rõ học sinh cần xem.")
+        access.require_shared_session(nd, nguoi_dung)
     with db.ket_noi() as conn:
         dong = conn.execute(
             "SELECT id, mon, noi_dung, tra_loi, chuong, dang_bai, luot, tao_luc"

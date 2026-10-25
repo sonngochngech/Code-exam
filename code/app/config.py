@@ -10,7 +10,7 @@ from pathlib import Path
 
 GOC = Path(__file__).resolve().parent.parent          # thư mục code/
 THU_MUC_DATA = GOC / "data"
-THU_MUC_HOC_LIEU = THU_MUC_DATA / "hoclieu"
+THU_MUC_HOC_LIEU = Path(os.environ.get("THU_MUC_HOC_LIEU") or THU_MUC_DATA / "hoclieu")   # e2e dùng thư mục tạm
 THU_MUC_WEB = GOC / "web"
 
 

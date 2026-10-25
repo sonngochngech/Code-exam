@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from .. import access, db
+from ..limits import LongText
 from ..auth import chi_giao_vien, nguoi_dung_hien_tai
 
 router = APIRouter(prefix="/api/readiness", tags=["technical readiness"])
@@ -15,7 +16,7 @@ class Readiness(BaseModel):
     mo_hinh: bool
     ket_noi: bool
     toan_man_hinh: bool
-    chi_tiet: str | None = None
+    chi_tiet: LongText | None = None
 
 
 @router.put("")

@@ -1,9 +1,14 @@
 """Versioned monitoring thresholds kept deliberately small for the prototype."""
 
+import math
+
 from fastapi import HTTPException
 
 from .. import db
 from . import audit
+
+MAX_SECONDS = 3600.0      # M5: một ngưỡng theo giây không quá một giờ
+MAX_ANGLE = 5.0           # M5: ngưỡng góc nhìn là tỉ lệ lệch, mặc định 0.35
 
 DEFAULTS = {
     "giay_roi_khung_hinh": 10.0,
@@ -54,8 +59,14 @@ def latest(connection, session_id: int) -> dict:
 
 def create_version(session_id: int, actor: str, values: dict) -> dict:
     clean = {key: float(values.get(key, DEFAULTS[key])) for key in DEFAULTS}
+    if not all(math.isfinite(value) for value in clean.values()):
+        raise HTTPException(400, "Ngưỡng phải là số hữu hạn")
     if any(value < 0 for value in clean.values()):
         raise HTTPException(400, "Ngưỡng không được âm")
+    if any(clean[key] > MAX_SECONDS for key in clean if key != "nguong_goc_nhin") \
+            or clean["nguong_goc_nhin"] > MAX_ANGLE:
+        raise HTTPException(
+            400, f"Ngưỡng giây tối đa {MAX_SECONDS:g}, ngưỡng góc nhìn tối đa {MAX_ANGLE:g}")
     with db.ket_noi() as connection:
         has_attempts = connection.execute(
             "SELECT 1 FROM bai_lam WHERE ca_thi=? LIMIT 1", (session_id,)

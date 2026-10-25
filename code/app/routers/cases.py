@@ -78,11 +78,13 @@ def decide(session_id: int, student: str, body: Decision,
         if not assigned:
             raise HTTPException(404, "Học sinh không thuộc ca thi")
         round_two = conn.execute(
-            "SELECT 1 FROM phan_doan WHERE ca_thi=? AND hoc_sinh=? AND vong=2 LIMIT 1",
-            (session_id, student),
+            "SELECT 1 FROM phan_doan WHERE ca_thi=? AND hoc_sinh=? AND vong=2"
+            " AND giao_vien=? LIMIT 1",
+            (session_id, student, user["ma"]),
         ).fetchone()
-        if not round_two:
-            raise HTTPException(409, "Phải hoàn tất phán đoán vòng hai trước khi kết luận")
+        if not round_two:                                               # M9b
+            raise HTTPException(
+                409, "Phải hoàn tất phán đoán vòng hai của chính thầy cô trước khi kết luận")
         previous = conn.execute(
             "SELECT phien_ban,trang_thai,can_cu,nguoi_xu_ly,tao_luc"
             " FROM ket_luan_ho_so WHERE ca_thi=? AND hoc_sinh=?"

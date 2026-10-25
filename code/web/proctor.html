@@ -22,6 +22,7 @@
     <p id="ca-trang-thai" class="mo-nho cach-nho" aria-live="polite"></p>
   </div>
 
+  <div id="tong-quan-box"></div>
   <div id="dieu-khien-box"></div>
   <div id="ho-tro-box"></div>
   <div id="noi-dung"></div>
@@ -52,22 +53,100 @@ function capNhatTrangThaiCa() {
   const c = dsCa.find(x => String(x.id) === document.getElementById("ca").value);
   document.getElementById("ca-trang-thai").textContent = c ? GOI_Y_CA[c.trang_thai] || "" : "";
 }
-API.get("/api/exam/ca").then(ds => {
+async function napDanhSachCa(giuChon = null) {
+  const ds = await API.get("/api/exam/ca");
   dsCa = ds;
   document.getElementById("ca").innerHTML = ds.length
     ? ds.map(c => `<option value="${c.id}">${thoat(c.ten)} — ${thoat(c.ten_de)} · ${TT_CA[c.trang_thai] || c.trang_thai}</option>`).join("")
     : '<option value="">Chưa có ca thi nào</option>';
+  if (giuChon && ds.some(c => c.id === giuChon)) document.getElementById("ca").value = String(giuChon);
   document.getElementById("ca").onchange = capNhatTrangThaiCa;
+  capNhatTrangThaiCa();
+  return ds;
+}
+napDanhSachCa().then(ds => {
   const muon = new URLSearchParams(location.search).get("ca");
   if (muon && ds.some(c => String(c.id) === muon)) {          // đi từ trang Quản lý nội dung
     document.getElementById("ca").value = muon;
     document.getElementById("nut-mo").click();
   }
-  capNhatTrangThaiCa();
 }).catch(e => thongBao(e.message, "loi"));
+
+// ---------------------------------------------------------------- ca chưa mở (Phiếu 1.3)
+function veCaChuaMo(c) {
+  const rong = c.so_cau === 0;
+  document.getElementById("dieu-khien-box").innerHTML = `
+    <div class="the ca-chua-mo" id="ca-chua-mo">
+      <div class="hang-hinh">
+        <div class="bieu-tuong-lon xanh">${icon("dong_ho")}</div>
+        <div><h2>Ca này chưa mở</h2>
+          <p class="mo">Khi thầy cô mở ca, học sinh vào làm bài được và bảng theo dõi hiện ngay tại đây.</p></div>
+      </div>
+      <ol class="cac-buoc-ca">
+        <li class="${c.so_hoc_sinh ? "xong" : ""}"><b>Có học sinh trong ca</b><span>${c.so_hoc_sinh} học sinh được phân công</span></li>
+        <li class="${rong ? "" : "xong"}"><b>Đề có câu hỏi</b><span>${rong ? "Đề chưa có câu hỏi" : c.so_cau + " câu hỏi"}</span></li>
+        <li><b>Mở ca</b><span>Bấm nút bên dưới</span></li>
+        <li><b>Theo dõi, rồi nộp phán đoán</b><span>Ngay tại màn hình này</span></li>
+      </ol>
+      <div class="hang cach">
+        <button id="nut-mo-ca" ${rong ? "disabled" : ""}>Mở ca ngay</button>
+        <a class="nut phu" href="/quan-tri">Cấp mã dự thi ở Quản lý nội dung</a>
+      </div>
+      ${rong ? '<p class="mo-nho" style="color:var(--do-sau)">Đề này chưa có câu hỏi nên chưa mở được ca. Soạn đề có ít nhất một câu rồi tạo ca mới.</p>' : ""}
+    </div>`;
+  document.getElementById("nut-mo-ca").onclick = async () => {
+    const dongY = await xacNhan(`Mở ca "${c.ten}" cho học sinh? Sau khi mở, thầy cô không sửa cấu hình hay phân công được nữa.`, "Mở ca");
+    if (!dongY) return;
+    try {
+      await API.post(`/api/exam/ca/${c.id}/trang-thai`, { trang_thai: "mo" });
+      thongBao("Đã mở ca", "xong");
+      await napDanhSachCa(c.id);
+      document.getElementById("nut-mo").click();
+    } catch (e) { thongBao(e.message, "loi"); }
+  };
+}
 
 let trangThaiVong = { vong_1: {}, vong_2: {} };
 let hzDieuKhien = null;
+let lastStates = [], hoTroMoi = new Set(), soHoTroMoi = 0, tongSoCanhBao = null;
+
+// Tổng số cảnh báo là dữ liệu máy nên chỉ có sau khi giáo viên nộp vòng 1 (cổng bằng chứng).
+function datTongHop(t) {
+  tongHop = t;
+  tongSoCanhBao = t.reduce((a, x) => a + (x.tong || 0), 0);
+  veTongQuan();
+}
+
+// Thẻ số liệu và thanh tiến độ ở đầu màn coi thi (Phiếu 1.3).
+function veTongQuan() {
+  const box = document.getElementById("tong-quan-box");
+  const s = lastStates;
+  if (!s.length) { box.innerHTML = ""; return; }
+  const dang = s.filter(x => x.da_bat_dau && !x.da_nop && x.trang_thai_ca === "mo").length;
+  const nop = s.filter(x => x.da_nop).length;
+  const chua = s.length - dang - nop;
+  const khoa = mucCa === "day_du" && !trangThaiVong.vong_1_day_du;
+  const the = (ic, mau, so, nhan, phu = "") => `<div class="the-so-lieu ${mau}">
+      <div class="bieu-tuong">${icon(ic)}</div>
+      <div><b class="so">${so}</b><span class="nhan-so">${nhan}</span>${phu ? `<span class="phu-so">${phu}</span>` : ""}</div></div>`;
+  const theHoTro = the("ho_tro", soHoTroMoi ? "do nhap-nhay" : "luc", soHoTroMoi, "Hỗ trợ đang chờ",
+    soHoTroMoi ? "Cần thầy cô xử lí" : "Không có yêu cầu mới");
+  box.innerHTML = `<div class="dai-the-so" id="dai-the-so">
+      ${the("nguoi", "xanh", s.length, "Học sinh")}
+      ${the("dong_ho", "vang", dang, "Đang làm")}
+      ${the("xong", "luc", `${nop}/${s.length}`, "Đã nộp")}
+      ${khoa
+        ? the("khoa", "xam", '<span class="bieu-khoa">Khóa</span>', "Cảnh báo hệ thống", "Hiện sau khi nộp vòng 1")
+        : the("canh_bao", "cam", tongSoCanhBao ?? 0, "Cảnh báo hệ thống", "Dữ liệu hỗ trợ, không phải kết luận")}
+      ${theHoTro}
+    </div>
+    <div class="thanh-ngang" role="img"
+         aria-label="${nop} đã nộp, ${dang} đang làm, ${chua} chưa vào làm">
+      <i class="nop" style="flex:${nop}"></i><i class="dang" style="flex:${dang}"></i><i class="chua" style="flex:${chua}"></i>
+    </div>
+    <div class="chu-giai-ngang"><span><i class="nop"></i> Đã nộp ${nop}</span>
+      <span><i class="dang"></i> Đang làm ${dang}</span><span><i class="chua"></i> Chưa vào ${chua}</span></div>`;
+}
 
 async function lamMoiTrangThaiVong() {
   trangThaiVong = await API.get(
@@ -81,6 +160,16 @@ async function lamMoiTrangThaiVong() {
 document.getElementById("nut-mo").onclick = async () => {
   caThi = Number(document.getElementById("ca").value);
   if (!caThi) return;
+  lastStates = []; hoTroMoi = new Set(); soHoTroMoi = 0; tongSoCanhBao = null;
+  document.title = "Coi thi và xem lại";
+  const ca0 = dsCa.find(x => x.id === caThi);
+  if (ca0 && ca0.trang_thai === "nhap") {                      // chưa mở: hướng dẫn và nút Mở ca
+    clearInterval(hzDieuKhien); clearInterval(hzHoTro);
+    ["tong-quan-box", "ho-tro-box", "phan-hoi-box", "ho-so-box"].forEach(id => { document.getElementById(id).innerHTML = ""; });
+    oNoiDung.innerHTML = "";
+    veCaChuaMo(ca0);
+    return;
+  }
   napDieuKhien();
   clearInterval(hzDieuKhien);
   hzDieuKhien = setInterval(napDieuKhien, 5000);              // tự làm mới trạng thái học sinh
@@ -105,12 +194,12 @@ async function napPhan() {
     if (mucCa === "day_du") {
       if (tt.da_nop && !tt.vong_1_day_du) veVong1(tt.thieu_vong_1);   // vòng 1 mới có một phần
       else if (tt.da_nop) {
-        tongHop = await API.get(`/api/proctor/ca/${caThi}/tong-hop`);
+        datTongHop(await API.get(`/api/proctor/ca/${caThi}/tong-hop`));
         veVong2(tt.da_nop_vong_2);
         if (tt.da_nop_vong_2) napPhanTich();
       } else veVong1();
     } else {
-      tongHop = await API.get(`/api/proctor/ca/${caThi}/tong-hop`);
+      datTongHop(await API.get(`/api/proctor/ca/${caThi}/tong-hop`));
       veMotVong(tt.da_nop);
       if (tt.da_nop) napPhanTich();
     }
@@ -134,12 +223,17 @@ async function napDieuKhien() {
   const box = document.getElementById("dieu-khien-box");
   try {
     const states = await API.get(`/api/attempt-control/ca/${caThi}`);
+    lastStates = states;
+    veTongQuan();
     dangLam = states.filter(x => x.da_bat_dau && !x.da_nop && x.trang_thai_ca === "mo").map(x => x.hoc_sinh);
     const dong = states.length && states[0].trang_thai_ca !== "mo";
     const hang = x => {
       const t = trangThaiHS(x);
       const song = !x.da_nop && x.trang_thai_ca === "mo";
-      return `<tr><td><b>${thoat(x.hoc_sinh)}</b></td>
+      const canHoTro = hoTroMoi.has(x.hoc_sinh);
+      const chuY = canHoTro || (song && (x.tam_dung || x.het_gio));
+      return `<tr class="${chuY ? "can-chu-y" : ""}"><td><b>${thoat(x.hoc_sinh)}</b>${
+        canHoTro ? ' <span class="nhan do nhap-nhay">Cần hỗ trợ</span>' : ""}</td>
         <td><span class="nhan ${t.mau}">${t.nhan}</span></td>
         <td class="mo-nho">${x.da_bat_dau && !x.da_nop ? dinhDangGiay(x.con_lai_giay ?? 0) : "—"}${x.them_giay ? ` (+${Math.round(x.them_giay / 60 * 10) / 10} phút)` : ""}</td>
         <td class="phai">
@@ -232,7 +326,7 @@ function veVong1(ds = dsHocSinh) {
             <td class="giua">${oChonMuc(h, "datMucV1", mucV1[h])}</td>
             <td><input placeholder="Ghi chú, có thể bỏ trống" aria-label="Ghi chú cho ${thoat(h)}"
                  value="${thoat(ghiChuV1[h] || "")}"
-                 oninput="datGhiChuV1('${thoat(h)}', this.value)"></td></tr>`;
+                 oninput="datGhiChuV1(${thoatJs(h)}, this.value)"></td></tr>`;
         }).join("")}</tbody></table>
       </div>
       <div id="v1-cho" class="canh-bao-o cam cach-nho an" role="status"></div>
@@ -273,7 +367,7 @@ async function nopVong1() {
       ghi_chu: Object.fromEntries(dsVong1.map(h => [h, ghiChuV1[h] || ""])) });
     thongBao("Đã nộp vòng 1", "xong");
     await lamMoiTrangThaiVong();
-    tongHop = await API.get(`/api/proctor/ca/${caThi}/tong-hop`);
+    datTongHop(await API.get(`/api/proctor/ca/${caThi}/tong-hop`));
     veVong2(false);
   } catch (e) { thongBao(e.message, "loi"); nut.disabled = false; capNhatCongVong1(); }
 }
@@ -299,18 +393,18 @@ function veVong2(khoa = false) {
             .map(([k, v]) => `<span class="nhan cam">${thoat(k)}: ${v}</span>`).join(" ");
           const moc = o.moc.map(m =>
             `<button class="phu nho" style="margin:2px 2px 0 0"
-              onclick="xemAnh(${m.id}, '${thoat(m.ten_loai)}', ${m.giay.toFixed(1)})"
+              onclick="xemAnh(${m.id}, ${thoatJs(m.ten_loai)}, ${m.giay.toFixed(1)})"
               >${dinhDangGiay(m.giay)}</button>`).join("");
           return `<tr>
             <td><b>${thoat(h)}</b>
               <div class="mo-nho">${o.tong} sự kiện máy ghi — không phải kết luận</div></td>
             <td><div class="bao">${nhan || '<span class="mo-nho">Không có</span>'}</div>
-                <div>${moc}</div></td>
+                <div>${moc}${nutLuoiAnh(h, o)}</div></td>
             <td class="giua">${mucV1[h] ?? "—"}</td>
             <td class="giua">${oChonMuc(h, "datMucV2", mucV2[h], khoa)}</td>
             <td><input placeholder="Bằng chứng nào làm thầy cô đổi ý" aria-label="Căn cứ đổi ý cho ${thoat(h)}"
                  value="${thoat(khoa ? (v2[h]?.ghi_chu || "") : "")}" ${khoa ? "readonly" : ""}
-                 oninput="datGhiChuV2('${thoat(h)}', this.value)"></td></tr>`;
+                 oninput="datGhiChuV2(${thoatJs(h)}, this.value)"></td></tr>`;
         }).join("")}</tbody></table>
       </div>
       ${khoa
@@ -327,15 +421,51 @@ function veVong2(khoa = false) {
   if (nutV2) nutV2.onclick = nopVong2;
 }
 
+function nutLuoiAnh(h, o) {
+  return o.moc.length
+    ? `<div><button class="phu nho" style="margin-top:6px" onclick="xemLuoiAnh(${thoatJs(h)})">Xem ảnh dạng lưới (${o.moc.length})</button></div>`
+    : "";
+}
+
+// Mọi ảnh bằng chứng của một học sinh trong một lưới; bấm vào ảnh để xem lớn.
+// Mỗi ảnh được tải qua cổng bằng chứng nên việc xem được ghi vào nhật ký như khi xem từng ảnh.
+window.xemLuoiAnh = async (hs) => {
+  const o = tongHop.find(x => x.hoc_sinh === hs);
+  if (!o || !o.moc.length) return;
+  hopThoai(`Ảnh bằng chứng của ${hs}`,
+    `<div id="luoi-anh-bang-chung" class="luoi-anh"></div>
+     <p class="mo-nho cach-nho">Ảnh để ở độ phân giải thấp. Cảnh báo là dữ liệu hỗ trợ, không phải kết luận.</p>`);
+  const luoi = document.getElementById("luoi-anh-bang-chung");
+  const o_anh = o.moc.map(m => {
+    const the = tao("button", "o-anh");
+    the.type = "button";
+    the.innerHTML = `<span class="khung-thu">Đang tải...</span><span class="chu-thich">${thoat(m.ten_loai)} · ${dinhDangGiay(m.giay)}</span>`;
+    the.onclick = () => window.xemAnh(m.id, m.ten_loai, m.giay.toFixed(1));
+    luoi.appendChild(the);
+    return [m, the];
+  });
+  await Promise.all(o_anh.map(async ([m, the]) => {
+    const khung = the.querySelector(".khung-thu");
+    try {
+      const kq = await API.get(`/api/proctor/moc/${m.id}/anh`);
+      const anh = dungAnhAnToan(kq.anh, `Ảnh ${m.ten_loai} lúc ${dinhDangGiay(m.giay)}`, "");
+      khung.textContent = "";
+      if (anh) khung.appendChild(anh); else khung.textContent = "Không có ảnh";
+    } catch (e) { khung.textContent = "Không tải được"; }
+  }));
+};
+
 window.xemAnh = async (id, ten, giay) => {
   try {
     const kq = await API.get(`/api/proctor/moc/${id}/anh`);
-    hopThoai(`${ten} — giây thứ ${giay}`, kq.anh
-      ? `<img src="${kq.anh}" style="width:100%;border-radius:var(--r-vua);
-           border:1px solid var(--vien)" alt="Ảnh bằng chứng">
+    const anh = dungAnhAnToan(kq.anh, "Ảnh bằng chứng",
+      "width:100%;border-radius:var(--r-vua);border:1px solid var(--vien)");
+    hopThoai(`${ten} — giây thứ ${giay}`, anh
+      ? `<div id="khung-anh-bang-chung"></div>
          <p class="mo-nho cach-nho">Ảnh để ở độ phân giải thấp, đủ nhận ra tình
             huống nhưng không lưu hình ảnh rõ nét của học sinh.</p>`
-      : '<p class="mo">Mốc này không kèm ảnh, ví dụ dấu hiệu chuyển cửa sổ.</p>');
+      : '<p class="mo">Không có ảnh cho mốc này: mốc không kèm ảnh (ví dụ chuyển cửa sổ) hoặc ảnh đã quá số ngày lưu. Thông tin của mốc vẫn còn.</p>');
+    if (anh) document.getElementById("khung-anh-bang-chung").appendChild(anh);
   } catch (e) { thongBao(e.message, "loi"); }
 };
 
@@ -375,18 +505,18 @@ function veMotVong(khoa = false) {
             .map(([k, v]) => `<span class="nhan cam">${thoat(k)}: ${v}</span>`).join(" ");
           const moc = o.moc.map(m =>
             `<button class="phu nho" style="margin:2px 2px 0 0"
-              onclick="xemAnh(${m.id}, '${thoat(m.ten_loai)}', ${m.giay.toFixed(1)})"
+              onclick="xemAnh(${m.id}, ${thoatJs(m.ten_loai)}, ${m.giay.toFixed(1)})"
               >${dinhDangGiay(m.giay)}</button>`).join("");
           const oData = coData ? `<td>
               <div class="bao">${nhan || '<span class="mo-nho">Không có</span>'}</div>
-              <div>${moc}</div></td>` : "";
+              <div>${moc}${nutLuoiAnh(h, o)}</div></td>` : "";
           const soPct = coData ? `<div class="mo-nho">${o.tong} sự kiện máy ghi — không phải kết luận</div>` : "";
           return `<tr>
             <td><b>${thoat(h)}</b>${soPct}</td>${oData}
             <td class="giua">${oChonMuc(h, "datMucV2", mucV2[h], khoa)}</td>
             <td><input placeholder="Ghi chú, có thể bỏ trống" aria-label="Ghi chú cho ${thoat(h)}"
                  value="${thoat(khoa ? (v1[h]?.ghi_chu || "") : (ghiChuV2[h] || ""))}" ${khoa ? "readonly" : ""}
-                 oninput="datGhiChuV2('${thoat(h)}', this.value)"></td></tr>`;
+                 oninput="datGhiChuV2(${thoatJs(h)}, this.value)"></td></tr>`;
         }).join("")}</tbody></table></div>
       ${khoa
         ? '<div class="canh-bao-o luc cach-nho"><b>Đã nộp phán đoán.</b> Phán đoán đã khóa và không sửa được.</div>'
@@ -481,10 +611,18 @@ async function napHoTro() {
   const box = document.getElementById("ho-tro-box");
   try {
     const ds = await API.get(`/api/tuong-tac/ho-tro/ca/${caThi}`);
-    const soMoi = ds.filter(x => x.trang_thai === "moi").length;
-    box.innerHTML = `<div class="the">
-      <div class="gon-gang"><h2 style="margin:0">Yêu cầu hỗ trợ trong buổi thi</h2>
-        <span class="nhan ${soMoi ? "do" : "luc"}">${soMoi} mới</span></div>
+    const moi = ds.filter(x => x.trang_thai === "moi");
+    const soMoi = moi.length;
+    const khoaCu = [...hoTroMoi].sort().join();
+    hoTroMoi = new Set(moi.map(x => x.hoc_sinh));
+    soHoTroMoi = soMoi;
+    document.title = (soMoi ? `(${soMoi}) ` : "") + "Coi thi và xem lại";
+    veTongQuan();
+    if (khoaCu !== [...hoTroMoi].sort().join() && lastStates.length) napDieuKhien();
+    box.innerHTML = `<div class="the ${soMoi ? "ho-tro-moi" : ""}" id="khung-ho-tro">
+      <div class="gon-gang"><h2 style="margin:0;display:flex;align-items:center;gap:10px">
+          <span class="bieu-tuong">${icon("ho_tro")}</span>Yêu cầu hỗ trợ trong buổi thi</h2>
+        <span class="nhan ${soMoi ? "do nhap-nhay" : "luc"}" id="huy-hieu-ho-tro">${soMoi} mới</span></div>
       <p class="mo-nho">Cảnh báo của hệ thống không tự động trừ điểm. Thầy cô xử lí,
         ghi thời gian gián đoạn và căn cứ cho mỗi quyết định.</p>
       ${ds.length ? `<div class="cuon-ngang"><table><thead><tr>
@@ -567,10 +705,15 @@ async function napPhanHoiHS() {
           <td>${thoat(p.ten_loai)}${p.giay != null ? ` (${dinhDangGiay(p.giay)})` : ""}</td>
           <td><span class="nhan ${({ dong_y: "luc", khong_dong_y: "do", can_lam_ro: "cam" })[p.lua_chon] || "xam"}">${TEN_LUA_CHON[p.lua_chon] || p.lua_chon}</span></td>
           <td>${thoat(p.giai_thich || "")}</td>
-          ${i === 0 ? `<td rowspan="${hs.phan_hoi.length}">${hanGiaoVien(hs)}</td>` : ""}</tr>`).join("") : `<tr>
+          ${i === 0 ? `<td rowspan="${hs.phan_hoi.length}">${hanGiaoVien(hs)}</td>` : ""}</tr>`).join("")
+          : (hs.bi_khoa && hs.so_phan_hoi) ? `<tr>
+          <td><b>${thoat(hs.hoc_sinh)}</b></td>
+          <td colspan="3"><span class="nhan luc">Đã phản hồi (${hs.so_phan_hoi})</span>
+            <span class="mo-nho">Nội dung theo từng sự kiện hiện sau khi thầy cô nộp phán đoán vòng 1.</span></td>
+          <td>${hanGiaoVien(hs)}</td></tr>` : `<tr>
           <td><b>${thoat(hs.hoc_sinh)}</b></td><td colspan="2">${
             hs.trang_thai_phan_hoi === "khong_phan_hoi" ? "Không phản hồi" : "Chưa phản hồi"}</td>
-          <td><button class="phu nho" onclick="giaHanPhanHoi('${thoat(hs.hoc_sinh)}')">Gia hạn</button></td>
+          <td><button class="phu nho" onclick="giaHanPhanHoi(${thoatJs(hs.hoc_sinh)})">Gia hạn</button></td>
           <td>${hanGiaoVien(hs)}</td></tr>`).join("")
       }</tbody></table></div></div>`;
   } catch (e) { box.innerHTML = ""; }

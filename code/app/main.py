@@ -6,12 +6,15 @@ Mở:    http://127.0.0.1:8000
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, config, db, llm
+from . import auth, config, db, limits, llm
 from .routers import admin, attempt_control, audit, cases, exam, proctor, readiness, stats, tutor, tuong_tac
 from .services import audit as audit_service, exam_access_codes
 
@@ -30,6 +33,11 @@ async def bao_ve_duong_truyen(request: Request, call_next):
     secure = request.url.scheme == "https" or forwarded == "https"
     if config.BAT_BUOC_HTTPS and request.url.hostname not in local_hosts and not secure:
         return JSONResponse(status_code=400, content={"detail": "Triển khai yêu cầu HTTPS"})
+    cap = limits.MAX_UPLOAD_BYTES if request.url.path in limits.UPLOAD_PATHS else limits.MAX_BODY_BYTES
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > cap:                      # M5
+        return JSONResponse(status_code=413, content={
+            "detail": "Yêu cầu quá lớn, vui lòng gửi dữ liệu nhỏ hơn."})
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
@@ -37,6 +45,31 @@ async def bao_ve_duong_truyen(request: Request, call_next):
     if secure:
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response
+
+
+@app.exception_handler(Exception)
+async def loi_khong_luong_truoc(request: Request, exc: Exception):
+    """L2: lỗi bất ngờ chỉ ghi vào nhật ký máy chủ, người dùng không thấy nội dung lỗi."""
+    logging.getLogger("app").error(
+        "Lỗi không xử lý ở %s %s", request.method, request.url.path,
+        exc_info=(type(exc), exc, exc.__traceback__))
+    return JSONResponse(status_code=500, content={
+        "detail": "Máy chủ gặp lỗi. Em thử lại sau ít phút, nếu vẫn lỗi thì báo thầy cô."})
+
+
+@app.exception_handler(RequestValidationError)
+async def loi_du_lieu_gui_len(request: Request, exc: RequestValidationError):
+    """Báo trường nào sai bằng tiếng Việt, và không in lại giá trị gửi lên.
+
+    Bộ xử lý mặc định nhét cả giá trị đầu vào vào phản hồi; với Infinity hoặc NaN
+    việc mã hóa JSON thất bại và người dùng nhận lỗi 500 (M5).
+    """
+    truong = []
+    for loi in exc.errors():
+        ten = ".".join(str(p) for p in loi.get("loc", ()) if p != "body")
+        truong.append(f"{ten}: {loi.get('msg', 'không hợp lệ')}" if ten else loi.get("msg", ""))
+    return JSONResponse(status_code=422, content={
+        "detail": "Dữ liệu gửi lên không hợp lệ (" + "; ".join(truong)[:300] + ")"})
 
 
 @app.on_event("startup")
@@ -62,11 +95,12 @@ def dang_nhap(yc: YeuCauDangNhap):
     entered = yc.ma.strip()
     exam_login = exam_access_codes.resolve(entered)
     nd = db.lay_nguoi_dung(exam_login["hoc_sinh"]) if exam_login else db.lay_nguoi_dung(entered)
-    if not nd:
-        raise HTTPException(404, "Không tìm thấy mã này. Em kiểm tra lại nhé.")
-    if nd["vai_tro"] == "hoc_sinh" and not exam_login \
-            and exam_access_codes.student_has_active_open_code(nd["ma"]):
-        raise HTTPException(401, "Em hãy dùng mã dự thi riêng do giáo viên cấp.")
+    # L1: mã không tồn tại và mã học sinh đoán được khi đã có mã dự thi trả lời giống hệt
+    # nhau, để không dò ra được tài khoản nào tồn tại.
+    if not nd or (nd["vai_tro"] == "hoc_sinh" and not exam_login
+                  and exam_access_codes.student_has_active_open_code(nd["ma"])):
+        raise HTTPException(401, "Mã không đúng hoặc đã hết hiệu lực. "
+                                 "Em kiểm tra lại, hoặc hỏi thầy cô để lấy mã dự thi.")
     # Cấp token phiên. Trình duyệt gửi kèm token này ở mọi lời gọi API sau đó.
     session_id = exam_login["ca_thi"] if exam_login else None
     token = auth.tao_phien(nd, session_id)

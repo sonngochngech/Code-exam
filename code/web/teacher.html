@@ -28,13 +28,20 @@
     </div>
   </div>
 
-  <div class="luoi luoi-3" id="o-so"></div>
+  <div class="dai-the-so" id="o-so"></div>
 
-  <div class="the">
-    <h2>Dạng bài học sinh vướng nhiều nhất</h2>
-    <p class="mo">Dạng đứng đầu là chỗ nên dành thêm thời lượng cho tiết ôn tập
-       kế tiếp. Bấm nút bên cạnh để sinh ngay đề luyện tập ba mức cho dạng đó.</p>
-    <div id="bang-dang"></div>
+  <div class="luoi luoi-2 luoi-dang-bai">
+    <div class="the">
+      <h2>Dạng bài học sinh vướng nhiều nhất</h2>
+      <p class="mo">Dạng đứng đầu là chỗ nên dành thêm thời lượng cho tiết ôn tập
+         kế tiếp. Bấm nút bên cạnh để sinh ngay đề luyện tập ba mức cho dạng đó.</p>
+      <div id="bang-dang"></div>
+    </div>
+    <div class="the">
+      <h3 style="margin-top:0">Phân bố các dạng bài</h3>
+      <p class="mo">Mỗi phần là tỉ lệ câu hỏi thuộc một dạng bài.</p>
+      <div id="bieu-do-dang"></div>
+    </div>
   </div>
 
   <div class="the">
@@ -49,6 +56,7 @@
       <h3 style="margin-top:0">Giờ học sinh hỏi bài trong ngày</h3>
       <p class="mo">Dùng để biết nên trực hỗ trợ vào khung giờ nào.</p>
       <div id="bieu-do-gio"></div>
+      <p class="mo-nho cach-nho" id="cao-diem-gio" aria-live="polite"></p>
     </div>
 
     <div class="the">
@@ -60,6 +68,7 @@
 
 </div>
 
+<script src="/static/vendor/chart.umd.js"></script>
 <script src="/static/common.js"></script>
 <script>
 const nd = chiGiaoVien();
@@ -70,8 +79,39 @@ if (!nd) throw new Error("dung lai");
 const oSoEl = document.getElementById("o-so");
 const oDang = document.getElementById("bang-dang");
 
-function oSo(so, ten) {
-  return `<div class="o-so"><div class="so">${so}</div><div class="ten">${ten}</div></div>`;
+// Chart.js đặt cục bộ (không dùng CDN). Mỗi biểu đồ được hủy trước khi vẽ lại.
+const bieuDo = {};
+const giamChuyenDong = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function mauBieuDo() {
+  const s = getComputedStyle(document.documentElement);
+  const lay = (ten, du) => (s.getPropertyValue(ten) || "").trim() || du;
+  return { nhan: lay("--nhan", "#2563eb"), cam: lay("--nang", "#f5a524"), mint: lay("--mint", "#14c4a8"),
+           chu: lay("--chu-vua", "#526079"), luoi: lay("--vien", "#dfe5ee") };
+}
+const BANG_MAU = ["#2563eb", "#f5a524", "#14c4a8", "#a855f7", "#ef4444", "#0ea5e9", "#84cc16", "#f97316"];
+
+function dungBieuDo(chuaId, ten, aria, cauHinh, mau = false) {
+  const o = document.getElementById(chuaId);
+  if (bieuDo[ten]) { bieuDo[ten].destroy(); delete bieuDo[ten]; }
+  o.innerHTML = `<div class="khung-bieu-do${mau ? " mau-mo" : ""}"${mau ? ' aria-hidden="true"' : ""}>
+      <canvas id="cv-${ten}" ${mau ? "" : `role="img" aria-label="${thoat(aria)}"`}></canvas>
+      ${mau ? '<span class="nhan-minh-hoa">Minh hoạ: số liệu mẫu, chưa phải dữ liệu thật</span>' : ""}</div>`;
+  cauHinh.options = { responsive: true, maintainAspectRatio: false,
+    animation: giamChuyenDong ? false : { duration: 600 }, ...(cauHinh.options || {}) };
+  bieuDo[ten] = new Chart(document.getElementById("cv-" + ten), cauHinh);
+}
+
+// Thẻ số liệu có biểu tượng, màu và xu hướng so với tuần trước (Phiếu 1.4).
+function oSo(ic, mau, so, ten, phu = "") {
+  return `<div class="the-so-lieu ${mau}"><div class="bieu-tuong">${icon(ic)}</div>
+    <div><b class="so">${so}</b><span class="nhan-so">${ten}</span>${phu}</div></div>`;
+}
+function xuHuong(x) {
+  if (!x || (!x.tuan_nay && !x.tuan_truoc)) return '<span class="phu-so">Chưa có dữ liệu để so sánh</span>';
+  if (!x.tuan_truoc) return `<span class="phu-so xu-huong tang">${x.tuan_nay} câu trong 7 ngày qua, tuần trước chưa có</span>`;
+  const d = x.tuan_nay - x.tuan_truoc, pt = Math.round(Math.abs(d) / x.tuan_truoc * 100);
+  if (d === 0) return '<span class="phu-so xu-huong">Bằng tuần trước</span>';
+  return `<span class="phu-so xu-huong ${d > 0 ? "tang" : "giam"}">${d > 0 ? "Tăng" : "Giảm"} ${pt}% so với tuần trước (${x.tuan_truoc} → ${x.tuan_nay})</span>`;
 }
 
 async function nap() {
@@ -82,6 +122,7 @@ async function nap() {
     const t = await API.get("/api/stats/tro-giang" + (mon ? `?mon=${encodeURIComponent(mon)}` : ""));
     veSoLieu(t);
     veDangBai(t);
+    veBieuDoDang(t);
     veHoiLap(t);
     veBieuDoGio(t);
   } catch (e) {
@@ -93,16 +134,21 @@ async function nap() {
 function veSoLieu(t) {
   const soEmLap = new Set(t.hoi_lap_lai.map(x => x.nguoi_dung)).size;
   const dau = t.dang_bai_vuong_nhat[0];
+  const cao = t.theo_gio.length ? t.theo_gio.reduce((a, g) => g.so_cau > a.so_cau ? g : a) : null;
   oSoEl.innerHTML =
-    oSo(t.tong_cau_hoi, "câu hỏi đã ghi nhận") +
-    oSo(soEmLap, "em hỏi lặp lại một chỗ") +
-    oSo(dau ? dau.ty_le + "%" : "0%", "tỉ lệ của dạng bài đứng đầu");
+    oSo("hoi", "xanh", t.tong_cau_hoi, "câu hỏi đã ghi nhận", xuHuong(t.xu_huong)) +
+    oSo("nguoi", "cam", soEmLap, "em hỏi lặp lại một chỗ",
+      soEmLap ? '<span class="phu-so">Nên hỏi han trực tiếp</span>' : '<span class="phu-so">Chưa em nào</span>') +
+    oSo("bieu_do", "vang", dau ? dau.ty_le + "%" : "0%", "tỉ lệ của dạng bài đứng đầu",
+      dau ? `<span class="phu-so">${thoat(dau.nhan)}</span>` : '<span class="phu-so">Chưa có dữ liệu</span>') +
+    oSo("dong_ho", "luc", cao ? Number(cao.gio) + "h" : "—", "giờ hỏi nhiều nhất",
+      cao ? `<span class="phu-so">${cao.so_cau} câu</span>` : '<span class="phu-so">Chưa có dữ liệu</span>');
 }
 
 function veDangBai(t) {
   if (!t.dang_bai_vuong_nhat.length) {
     oDang.innerHTML = trongRong("bieu_do", "Chưa có dữ liệu",
-      "Khi học sinh bắt đầu hỏi bài, bảng này sẽ có số.");
+      "Khi học sinh bắt đầu hỏi bài, danh sách các dạng bài vướng nhiều nhất sẽ hiện ở đây, kèm nút sinh đề luyện.");
     return;
   }
   const max = t.dang_bai_vuong_nhat[0].so_cau;
@@ -124,6 +170,20 @@ function veDangBai(t) {
   });
 }
 
+// Biểu đồ phân bố dạng bài. Chưa có dữ liệu thì hiện bản mẫu mờ, ghi rõ là minh hoạ.
+function veBieuDoDang(t) {
+  const co = t.dang_bai_vuong_nhat.length > 0;
+  const ds = co ? t.dang_bai_vuong_nhat : [
+    { nhan: "Rút gọn căn thức", so_cau: 9 }, { nhan: "Giải phương trình bậc hai", so_cau: 6 },
+    { nhan: "Hệ thức lượng", so_cau: 4 }, { nhan: "Khác", so_cau: 2 }];
+  dungBieuDo("bieu-do-dang", "dang", "Biểu đồ tròn phân bố các dạng bài học sinh hay vướng", {
+    type: "doughnut",
+    data: { labels: ds.map(d => d.nhan), datasets: [{ data: ds.map(d => d.so_cau),
+      backgroundColor: ds.map((_, i) => BANG_MAU[i % BANG_MAU.length]), borderWidth: 2, borderColor: "#fff" }] },
+    options: { cutout: "58%", plugins: { legend: { position: "bottom", labels: { color: mauBieuDo().chu, boxWidth: 12 } } } },
+  }, !co);
+}
+
 function veHoiLap(t) {
   const o = document.getElementById("bang-lap");
   if (!t.hoi_lap_lai.length) {
@@ -141,17 +201,23 @@ function veHoiLap(t) {
 }
 
 function veBieuDoGio(t) {
-  const o = document.getElementById("bieu-do-gio");
-  if (!t.theo_gio.length) { o.innerHTML = trongRong("dong_ho", "Chưa có dữ liệu", ""); return; }
-  const max = Math.max(1, ...t.theo_gio.map(g => g.so_cau));
-  o.innerHTML = `<div style="display:flex;gap:4px;align-items:flex-end;height:150px">` +
-    t.theo_gio.map(g => `
-      <div style="flex:1;text-align:center;min-width:0" title="${g.gio} giờ: ${g.so_cau} câu">
-        <div style="background:linear-gradient(180deg,var(--nhan),var(--nang));
-                    border-radius:5px 5px 0 0;transition:height .7s cubic-bezier(.22,1,.36,1);
-                    height:${Math.max(4, g.so_cau / max * 118)}px"></div>
-        <div class="mo-nho" style="font-size:11px;margin-top:3px">${g.gio}h</div>
-      </div>`).join("") + `</div>`;
+  const co = t.theo_gio.length > 0;
+  const mau = mauBieuDo();
+  const gio = Array.from({ length: 24 }, (_, i) => i);
+  const dem = co ? Object.fromEntries(t.theo_gio.map(g => [Number(g.gio), g.so_cau]))
+                 : { 7: 2, 12: 3, 19: 7, 20: 9, 21: 5, 22: 2 };      // bản mẫu mờ khi chưa có dữ liệu
+  const dat = gio.map(h => dem[h] || 0);
+  const cao = Math.max(...dat);
+  dungBieuDo("bieu-do-gio", "gio", "Biểu đồ cột số câu hỏi theo giờ trong ngày", {
+    type: "bar",
+    data: { labels: gio.map(h => h + "h"), datasets: [{ label: "Số câu hỏi", data: dat,
+      backgroundColor: dat.map(v => v === cao && v > 0 ? mau.cam : mau.nhan), borderRadius: 5 }] },
+    options: { plugins: { legend: { display: false } },
+      scales: { x: { ticks: { color: mau.chu, maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }, grid: { display: false } },
+                y: { beginAtZero: true, ticks: { precision: 0, color: mau.chu }, grid: { color: mau.luoi } } } },
+  }, !co);
+  document.getElementById("cao-diem-gio").textContent = co
+    ? `Cao điểm lúc ${dat.indexOf(cao)}h với ${cao} câu hỏi.` : "";
 }
 
 async function napKho() {

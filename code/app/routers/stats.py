@@ -15,8 +15,9 @@ from collections import Counter
 
 from fastapi import APIRouter, Depends
 
-from .. import db
+from .. import access, db
 from ..auth import chi_giao_vien
+from ..services import evidence
 
 # Mọi thống kê đều dành cho giáo viên.
 router = APIRouter(prefix="/api/stats", tags=["thong ke"],
@@ -30,10 +31,10 @@ def trung_binh(a: list[float]) -> float:
     return sum(a) / len(a) if a else 0.0
 
 
-def do_lech_chuan(a: list[float]) -> float:
-    """Độ lệch chuẩn mẫu, chia cho n trừ 1."""
+def do_lech_chuan(a: list[float]) -> float | None:
+    """Độ lệch chuẩn mẫu, chia cho n trừ 1. Dưới hai giá trị thì chưa có độ lệch (L8)."""
     if len(a) < 2:
-        return 0.0
+        return None
     m = trung_binh(a)
     return math.sqrt(sum((x - m) ** 2 for x in a) / (len(a) - 1))
 
@@ -115,10 +116,12 @@ def kiem_dinh_t_doc_lap(a: list[float], b: list[float]) -> dict:
     t = (trung_binh(a) - trung_binh(b)) / mau
     df = (va / na + vb / nb) ** 2 / (
         (va / na) ** 2 / (na - 1) + (vb / nb) ** 2 / (nb - 1))
-    sp = math.sqrt(((na - 1) * va + (nb - 1) * vb) / (na + nb - 2))
+    # L7: kích thước hiệu ứng dùng trung bình hai phương sai, cùng cơ sở "không giả định
+    # phương sai bằng nhau" với kiểm định Welch ở trên (không dùng độ lệch gộp theo cỡ mẫu).
+    s_tb = math.sqrt((va + vb) / 2)
     return {
         "t": round(t, 3), "df": round(df, 1), "p": round(p_tu_t(t, df), 4),
-        "d": round((trung_binh(a) - trung_binh(b)) / sp, 2) if sp else None,
+        "d": round((trung_binh(a) - trung_binh(b)) / s_tb, 2) if s_tb else None,
     }
 
 
@@ -126,12 +129,13 @@ def kiem_dinh_t_doc_lap(a: list[float], b: list[float]) -> dict:
 # Hệ thống 1: bảng điểm yếu của lớp
 # ---------------------------------------------------------------------------
 @router.get("/tro-giang")
-def thong_ke_tro_giang(mon: str | None = None):
+def thong_ke_tro_giang(mon: str | None = None, user: dict = Depends(chi_giao_vien)):
     """Ba con số giáo viên cần: dạng bài vướng nhiều nhất, em hỏi lặp lại,
-    và giờ cao điểm trong tuần."""
-    dieu_kien, tham_so = "", []
+    và giờ cao điểm trong tuần. Chỉ tính học sinh thầy cô phụ trách (L3)."""
+    dieu_kien = f" WHERE nguoi_dung IN ({access.visible_students_sql()})"
+    tham_so = [user.get("lop"), user["ma"]]
     if mon:
-        dieu_kien, tham_so = " WHERE mon = ?", [mon]
+        dieu_kien, tham_so = dieu_kien + " AND mon = ?", tham_so + [mon]
 
     with db.ket_noi() as conn:
         tong = conn.execute(
@@ -152,6 +156,16 @@ def thong_ke_tro_giang(mon: str | None = None):
             f"SELECT substr(tao_luc, 12, 2) gio, COUNT(*) so_cau"
             f" FROM cau_hoi{dieu_kien} GROUP BY gio ORDER BY gio", tham_so).fetchall()
 
+        def trong_khoang(tu: str, den: str) -> int:
+            return conn.execute(
+                f"SELECT COUNT(*) c FROM cau_hoi{dieu_kien}"
+                " AND datetime(tao_luc) >= datetime('now', ?) AND datetime(tao_luc) < datetime('now', ?)",
+                tham_so + [tu, den]).fetchone()["c"]
+
+        # Xu hướng: bảy ngày vừa qua so với bảy ngày trước đó, cho thẻ số liệu (Phiếu 1.4).
+        xu_huong = {"tuan_nay": trong_khoang("-7 days", "+1 day"),
+                    "tuan_truoc": trong_khoang("-14 days", "-7 days")}
+
     return {
         "tong_cau_hoi": tong,
         "dang_bai_vuong_nhat": [
@@ -160,6 +174,7 @@ def thong_ke_tro_giang(mon: str | None = None):
         ],
         "hoi_lap_lai": [dict(d) for d in lap_lai],
         "theo_gio": [dict(d) for d in theo_gio],
+        "xu_huong": xu_huong,
     }
 
 
@@ -190,12 +205,14 @@ def _do_chinh_xac(cap: list[tuple[int, int]]) -> dict:
 
 @router.get("/nghien-cuu/{ca_id}")
 def phan_tich_nghien_cuu(ca_id: int, nguong_thuc_te: int = 3,
-                         nguong_nghi_ngo: int = 2):
+                         nguong_nghi_ngo: int = 2,
+                         user: dict = Depends(chi_giao_vien)):
     """Describe events and compare judgments only to independent human decisions.
 
     ``nguong_thuc_te`` remains accepted for old clients but is deliberately not
     used: machine-event counts are never ground truth.
     """
+    evidence.require_evidence_unlocked(ca_id, user)          # C5
     with db.ket_noi() as conn:
         moc = conn.execute(
             "SELECT hoc_sinh, COUNT(*) so_moc FROM moc_bat_thuong"
@@ -249,8 +266,10 @@ def phan_tich_nghien_cuu(ca_id: int, nguong_thuc_te: int = 3,
 
 
 @router.get("/so-sanh-nhom")
-def so_sanh_hai_nhom(ca_tn: int, ca_dc: int):
+def so_sanh_hai_nhom(ca_tn: int, ca_dc: int, user: dict = Depends(chi_giao_vien)):
     """So sánh nhóm thực nghiệm và nhóm đối chứng về số hành vi bất thường."""
+    for ca_id in {ca_tn, ca_dc}:                             # C5
+        evidence.require_evidence_unlocked(ca_id, user)
     with db.ket_noi() as conn:
         def lay(ca_id):
             hs = conn.execute(
@@ -264,11 +283,14 @@ def so_sanh_hai_nhom(ca_tn: int, ca_dc: int):
 
         tn, dc = lay(ca_tn), lay(ca_dc)
 
+    def tom_tat(x: list[float]) -> dict:
+        sd = do_lech_chuan(x)
+        return {"n": len(x), "trung_binh": round(trung_binh(x), 2),
+                "do_lech_chuan": None if sd is None else round(sd, 2)}
+
     return {
-        "nhom_thuc_nghiem": {"n": len(tn), "trung_binh": round(trung_binh(tn), 2),
-                             "do_lech_chuan": round(do_lech_chuan(tn), 2)},
-        "nhom_doi_chung": {"n": len(dc), "trung_binh": round(trung_binh(dc), 2),
-                           "do_lech_chuan": round(do_lech_chuan(dc), 2)},
+        "nhom_thuc_nghiem": tom_tat(tn),
+        "nhom_doi_chung": tom_tat(dc),
         "kiem_dinh": kiem_dinh_t_doc_lap(tn, dc),
         "ghi_chu": "Cỡ mẫu nhỏ, cần nêu rõ hạn chế này khi viết báo cáo.",
     }

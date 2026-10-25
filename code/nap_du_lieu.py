@@ -3,6 +3,7 @@
 Cách dùng:
     python nap_du_lieu.py hoc-lieu data/hoclieu/decuong_toan.docx "Toán"
     python nap_du_lieu.py de-mau
+    python nap_du_lieu.py de-ca-mau
     python nap_du_lieu.py xem
 """
 
@@ -84,6 +85,98 @@ def tao_de_mau() -> None:
     print(f"Đã tạo đề {de_id} gồm {len(cau_hoi)} câu, kèm hai ca thi 9A và 9B.")
 
 
+# Dữ liệu mẫu cho thử tay: chỉ đề thi và ca thi, không có học sinh, bài làm hay mốc nào.
+_QUY_DINH_MAU = ("Được dùng nháp và máy tính cầm tay. Không dùng tài liệu và điện thoại. "
+                 "Cần hỗ trợ thì bấm nút Cần hỗ trợ, không tự ý rời chỗ.")
+_DE_MAU = [
+    ("Toán 9 - Căn bậc hai (10 câu)", "Toán", 30, "Căn bậc hai", [
+        ("Căn bậc hai số học của 49 là?", ["5", "6", "7", "8"], 2, "de"),
+        ("Giá trị của √((-3)²) là?", ["-3", "3", "9", "0"], 1, "de"),
+        ("Biểu thức √(x - 2) xác định khi nào?", ["x ≥ 2", "x > 2", "x ≤ 2", "x ≥ 0"], 0, "vua"),
+        ("Rút gọn √12 được kết quả là?", ["2√3", "3√2", "4√3", "6"], 0, "vua"),
+        ("Giá trị của √16 · √9 là?", ["12", "7", "25", "144"], 0, "de"),
+        ("Giá trị của √50 − √2 là?", ["√48", "4√2", "5√2", "6√2"], 1, "kho"),
+        ("Trục căn thức ở mẫu của 1/√2 được?", ["√2/2", "2√2", "1/2", "√2"], 0, "vua"),
+        ("So sánh √5 và 2 ta có?", ["√5 > 2", "√5 < 2", "√5 = 2", "Không so sánh được"], 0, "de"),
+        ("Giá trị của √25 là?", ["±5", "5", "-5", "25"], 1, "de"),
+        ("Tìm x biết √x = 4.", ["16", "8", "4", "2"], 0, "vua"),
+    ]),
+    ("Toán 9 - Hàm số bậc nhất (6 câu)", "Toán", 20, "Hàm số bậc nhất", [
+        ("Hàm số nào sau đây là hàm số bậc nhất?", ["y = 2x + 1", "y = x²", "y = 3/x", "y = 5"], 0, "de"),
+        ("Hệ số góc của đường thẳng y = -3x + 2 là?", ["2", "-3", "3", "-2"], 1, "de"),
+        ("Đồ thị hàm số y = 2x - 4 cắt trục tung tại điểm nào?", ["(0; -4)", "(2; 0)", "(0; 4)", "(-4; 0)"], 0, "vua"),
+        ("Hai đường thẳng y = 2x + 1 và y = 2x - 3 có vị trí tương đối nào?",
+         ["Cắt nhau", "Song song", "Trùng nhau", "Vuông góc"], 1, "vua"),
+        ("Hàm số y = (m - 1)x + 3 đồng biến khi nào?", ["m > 1", "m < 1", "m = 1", "m > 0"], 0, "vua"),
+        ("Đường thẳng đi qua A(1; 3) và có hệ số góc 2 là?",
+         ["y = 2x + 1", "y = 2x + 3", "y = x + 2", "y = 3x"], 0, "kho"),
+    ]),
+    ("Khoa học tự nhiên 9 - Khảo sát nhanh (5 câu)", "Khoa học tự nhiên", 15, "Tổng hợp", [
+        ("Đơn vị của cường độ dòng điện là?", ["Vôn", "Ampe", "Ôm", "Oát"], 1, "de"),
+        ("Chất nào sau đây là chất tinh khiết?", ["Nước muối", "Không khí", "Nước cất", "Sữa"], 2, "de"),
+        ("Bào quan thực hiện quang hợp ở tế bào thực vật là?",
+         ["Ti thể", "Lục lạp", "Nhân", "Ribosome"], 1, "vua"),
+        ("Công thức tính vận tốc là?", ["v = s/t", "v = s·t", "v = t/s", "v = s + t"], 0, "de"),
+        ("Khí nào chiếm tỉ lệ lớn nhất trong không khí?",
+         ["Oxi", "Nitơ", "Cacbon đioxit", "Hiđro"], 1, "vua"),
+    ]),
+]
+# (tên ca, chỉ số đề, lớp, mức giám sát, giáo viên tạo, trạng thái, giáo viên thứ hai tham gia)
+_CA_MAU = [
+    ("Kiểm tra 15 phút - Căn bậc hai (9A)", 0, "9A", "day_du", "gv01", "nhap", False),
+    ("Giữa kỳ - Căn bậc hai (9A + 9B)", 0, "9A, 9B", "day_du", "gv01", "mo", True),
+    ("Ôn tập - Hàm số bậc nhất (9B)", 1, "9B", "day_du", "gv01", "dong", False),
+    ("Khảo sát KHTN - giám sát cơ bản (9A)", 2, "9A", "co_ban", "gv02", "mo", False),
+    ("Đối chứng không giám sát - Hàm số (9B)", 1, "9B", "khong", "gv01", "nhap", False),
+    ("Ca riêng của gv01 - Căn bậc hai (9B)", 0, "9B", "day_du", "gv01", "mo", False),
+]
+
+
+def tao_de_ca_mau() -> None:
+    """Tạo ba đề và sáu ca thi ở các trạng thái khác nhau để thử tay.
+
+    Dùng đúng các hàm của ứng dụng nên dữ liệu có cùng cấu trúc với dữ liệu tạo trên web.
+    Cần có sẵn hai giáo viên gv01 và gv02 (tài khoản mẫu). Chạy lại không tạo thêm.
+    """
+    from app.routers import exam
+    from app.services import session_lifecycle
+
+    with db.ket_noi() as conn:
+        da_co = conn.execute("SELECT 1 FROM de_thi WHERE ten=?", (_DE_MAU[0][0],)).fetchone()
+        thieu = [m for m in ("gv01", "gv02") if not conn.execute(
+            "SELECT 1 FROM nguoi_dung WHERE ma=? AND vai_tro='giao_vien'", (m,)).fetchone()]
+    if da_co:
+        print("Đã có đề mẫu trong cơ sở dữ liệu, bỏ qua bước tạo mẫu.")
+        return
+    if thieu:
+        print("Thiếu tài khoản giáo viên mẫu: " + ", ".join(thieu))
+        return
+
+    giao_vien = {"gv01": {"ma": "gv01", "vai_tro": "giao_vien"},
+                 "gv02": {"ma": "gv02", "vai_tro": "giao_vien"}}
+    ma_de = []
+    for ten, mon, so_phut, chuong, cau in _DE_MAU:
+        de = exam.DeMoi(ten=ten, mon=mon, so_phut=so_phut, cau_hoi=[
+            exam.CauMoi(noi_dung=nd, phuong_an=pa, dap_an=da, chuong=chuong, muc_do=md)
+            for nd, pa, da, md in cau])
+        ma_de.append(exam.tao_de(de, giao_vien["gv01"])["de_thi"])
+
+    for ten, chi_so_de, lop, muc, nguoi_tao, trang_thai, them_gv in _CA_MAU:
+        ca = exam.tao_ca(exam.CaMoi(
+            de_thi=ma_de[chi_so_de], ten=ten, lop=lop, muc_giam_sat=muc,
+            quy_dinh=_QUY_DINH_MAU, phut_phan_hoi=10080, phut_xu_ly_gv=10080),
+            giao_vien[nguoi_tao])["ca_thi"]
+        if them_gv:
+            exam.tham_gia_ca(ca, giao_vien["gv02"])
+        if trang_thai in ("mo", "dong"):
+            session_lifecycle.transition(ca, "mo")
+        if trang_thai == "dong":
+            session_lifecycle.transition(ca, "dong")
+
+    print(f"Đã tạo {len(ma_de)} đề và {len(_CA_MAU)} ca thi mẫu "
+          "(nháp, đang mở, đã đóng; có ca của gv02 và ca gv02 tham gia).")
+
+
 def xem() -> None:
     with db.ket_noi() as conn:
         for bang in ("nguoi_dung", "hoc_lieu", "cau_hoi", "de_thi",
@@ -106,6 +199,8 @@ def main() -> None:
         nap_hoc_lieu(sys.argv[2], sys.argv[3])
     elif lenh == "de-mau":
         tao_de_mau()
+    elif lenh == "de-ca-mau":
+        tao_de_ca_mau()
     elif lenh == "xem":
         xem()
     else:

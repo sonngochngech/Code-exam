@@ -216,6 +216,7 @@ CREATE TABLE IF NOT EXISTS xac_nhan_truoc_thi (
     ca_thi      INTEGER NOT NULL REFERENCES ca_thi(id),
     hoc_sinh    TEXT NOT NULL,
     da_xem_video INTEGER DEFAULT 0,
+    da_doc_ban_chu INTEGER DEFAULT 0,     -- M4: đọc bản chữ, tách khỏi xem video
     tra_loi_tinh_huong TEXT,               -- JSON đáp án câu hỏi tình huống
     dong_y      INTEGER DEFAULT 0,         -- đã bấm "Tôi đã hiểu và đồng ý"
     phien_ban_huong_dan INTEGER NOT NULL DEFAULT 1,
@@ -275,6 +276,22 @@ CREATE TABLE IF NOT EXISTS luot_lam_bai (
     PRIMARY KEY (ca_thi, hoc_sinh)
 );
 
+-- C6: lúc đề được phát lần đầu. Chỉ dùng làm mốc dự phòng cho hạn nộp khi học sinh
+-- chưa bấm "Bắt đầu"; đồng hồ làm bài vẫn tính từ luot_lam_bai.
+CREATE TABLE IF NOT EXISTS phat_de (
+    ca_thi   INTEGER NOT NULL REFERENCES ca_thi(id),
+    hoc_sinh TEXT NOT NULL,
+    luc      TEXT NOT NULL,
+    tron     INTEGER NOT NULL DEFAULT 1,   -- M2: đề phát lần đầu có trộn không
+    PRIMARY KEY (ca_thi, hoc_sinh)
+);
+
+-- C4: các bước nâng cấp dữ liệu chỉ chạy một lần, để không làm lại mỗi lần khởi động.
+CREATE TABLE IF NOT EXISTS da_di_tru (
+    ten TEXT PRIMARY KEY,
+    luc TEXT NOT NULL
+);
+
 -- Sau buổi thi: trong vòng một giờ, học sinh xem lại những sự kiện được phép
 -- tiếp cận và chọn "đồng ý", "không đồng ý" hoặc "cần làm rõ" kèm giải thích.
 -- Lựa chọn là phản hồi với mô tả sự kiện, không phải tự nhận hay tự bác bỏ.
@@ -318,7 +335,19 @@ CREATE INDEX IF NOT EXISTS idx_nhat_ky_ca
 
 
 def bay_gio() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    """Giờ hiện tại, kèm múi giờ (L10), ví dụ 2026-10-25T08:30:00+07:00."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def hien_tai() -> datetime:
+    return datetime.now().astimezone()
+
+
+def doc_gio(text: str) -> datetime:
+    """Đọc một mốc thời gian đã lưu. Bản ghi cũ không có múi giờ được hiểu là giờ của
+    máy chủ lúc ghi (L10)."""
+    value = datetime.fromisoformat(text)
+    return value if value.tzinfo else value.astimezone()
 
 
 @contextmanager
@@ -328,6 +357,9 @@ def ket_noi():
     conn = sqlite3.connect(config.DUONG_DAN_DB)
     conn.row_factory = sqlite3.Row          # cho phép truy cập cột theo tên
     conn.execute("PRAGMA foreign_keys = ON")
+    # L6: WAL để người đọc không chặn người ghi; chờ tối đa 10 giây khi khóa bận.
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 10000")
     try:
         yield conn
         conn.commit()
@@ -388,23 +420,46 @@ def _nang_cap(conn) -> None:
         conn.execute("ALTER TABLE moc_bat_thuong ADD COLUMN nguong_ap_dung REAL")
     if "phien_ban_cau_hinh" not in cot_moc:
         conn.execute("ALTER TABLE moc_bat_thuong ADD COLUMN phien_ban_cau_hinh INTEGER")
+    if "client_moc_id" not in cot_moc:
+        conn.execute("ALTER TABLE moc_bat_thuong ADD COLUMN client_moc_id TEXT")
+    # M6: trình duyệt gửi lại mốc sau khi mất mạng thì chỉ lưu một bản. Bản ghi cũ
+    # và trang cũ không gửi mã nên không bị ràng buộc.
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_moc_client ON moc_bat_thuong"
+        "(ca_thi, hoc_sinh, client_moc_id) WHERE client_moc_id IS NOT NULL")
+    cot_xn = {r["name"] for r in conn.execute("PRAGMA table_info(xac_nhan_truoc_thi)")}
+    if "da_doc_ban_chu" not in cot_xn:
+        conn.execute("ALTER TABLE xac_nhan_truoc_thi ADD COLUMN da_doc_ban_chu INTEGER DEFAULT 0")
     cot_ht = {r["name"] for r in conn.execute("PRAGMA table_info(yeu_cau_ho_tro)")}
     if "moc_id" not in cot_ht:
         conn.execute("ALTER TABLE yeu_cau_ho_tro ADD COLUMN moc_id INTEGER")
     if "giay_trong_bai" not in cot_ht:
         conn.execute("ALTER TABLE yeu_cau_ho_tro ADD COLUMN giay_trong_bai REAL")
-    # Dữ liệu nguyên mẫu cũ chưa có phân công: gán học sinh cùng lớp và các
-    # giáo viên hiện có để không làm hỏng các ca đã tạo trước khi nâng cấp.
-    conn.execute(
-        "INSERT OR IGNORE INTO ca_thi_nguoi_dung (ca_thi, nguoi_dung, vai_tro_trong_ca)"
-        " SELECT c.id, n.ma, 'hoc_sinh' FROM ca_thi c JOIN nguoi_dung n"
-        " ON n.vai_tro='hoc_sinh' AND (c.lop IS NULL OR c.lop='' OR n.lop=c.lop)"
-    )
-    conn.execute(
-        "INSERT OR IGNORE INTO ca_thi_nguoi_dung (ca_thi, nguoi_dung, vai_tro_trong_ca)"
-        " SELECT c.id, n.ma, 'giao_vien' FROM ca_thi c CROSS JOIN nguoi_dung n"
-        " WHERE n.vai_tro='giao_vien'"
-    )
+    _gan_phan_cong_ban_dau(conn)
+
+
+def _gan_phan_cong_ban_dau(conn) -> None:
+    """C4: dữ liệu nguyên mẫu cũ chưa có phân công thì gán đúng một lần.
+
+    Gán học sinh cùng lớp và các giáo viên hiện có để không làm hỏng các ca đã tạo
+    trước khi có bảng phân công. Trước đây bước này chạy lại mỗi lần khởi động nên
+    phân công đã gỡ bị gán lại. Giờ có dấu đã chạy, và bỏ qua nếu bảng đã có dữ liệu.
+    """
+    ten = "phan_cong_ban_dau"
+    if conn.execute("SELECT 1 FROM da_di_tru WHERE ten=?", (ten,)).fetchone():
+        return
+    if not conn.execute("SELECT 1 FROM ca_thi_nguoi_dung LIMIT 1").fetchone():
+        conn.execute(
+            "INSERT OR IGNORE INTO ca_thi_nguoi_dung (ca_thi, nguoi_dung, vai_tro_trong_ca)"
+            " SELECT c.id, n.ma, 'hoc_sinh' FROM ca_thi c JOIN nguoi_dung n"
+            " ON n.vai_tro='hoc_sinh' AND (c.lop IS NULL OR c.lop='' OR n.lop=c.lop)"
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO ca_thi_nguoi_dung (ca_thi, nguoi_dung, vai_tro_trong_ca)"
+            " SELECT c.id, n.ma, 'giao_vien' FROM ca_thi c CROSS JOIN nguoi_dung n"
+            " WHERE n.vai_tro='giao_vien'"
+        )
+    conn.execute("INSERT INTO da_di_tru (ten, luc) VALUES (?,?)", (ten, bay_gio()))
 
 
 def _nap_tai_khoan_mau(conn) -> None:

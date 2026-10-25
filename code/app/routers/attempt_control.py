@@ -1,9 +1,10 @@
 """BL-11: simple per-student pause and extra-time controls."""
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import access, db
+from ..limits import MAX_EXTRA_SECONDS, LongText, ShortText
 from ..auth import chi_giao_vien, nguoi_dung_hien_tai
 from ..services import attempt_clock, audit
 
@@ -27,9 +28,9 @@ def _state(conn, session_id: int, student: str) -> dict:
 
 
 class Control(BaseModel):
-    hanh_dong: str
-    so_giay: int = 0
-    ly_do: str
+    hanh_dong: ShortText
+    so_giay: int = Field(default=0, ge=0, le=MAX_EXTRA_SECONDS)
+    ly_do: LongText
 
 
 @router.post("/ca/{session_id}/hoc-sinh/{student}")

@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 import random
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .. import access, config, db
 from ..auth import chi_giao_vien, nguoi_dung_hien_tai
-from ..services import attempt_clock, exam_access_codes, monitoring_config, session_lifecycle
+from ..limits import ShortText
+from ..services import (attempt_clock, audit, exam_access_codes, feedback_deadlines,
+                        monitoring_config, session_lifecycle)
 
 # Mức giám sát của một ca thi. "khong" là đối chứng không camera; "co_ban" là
 # giám sát cơ bản, chưa áp năm nguyên tắc (ngưỡng thấp nên báo nhiều, không báo
@@ -42,18 +45,31 @@ router = APIRouter(prefix="/api/exam", tags=["ky thi"],
 # Kho đề
 # ---------------------------------------------------------------------------
 class CauMoi(BaseModel):
-    noi_dung: str
-    phuong_an: list[str]
-    dap_an: int                      # chỉ số phương án đúng, tính từ 0
-    chuong: str | None = None
-    muc_do: str = "vua"              # de | vua | kho
+    noi_dung: str = Field(max_length=2_000)
+    phuong_an: list[str] = Field(min_length=2, max_length=8)
+    dap_an: int = Field(ge=0)        # chỉ số phương án đúng, tính từ 0
+    chuong: ShortText | None = None
+    muc_do: ShortText = "vua"        # de | vua | kho
+
+    @field_validator("phuong_an")
+    @classmethod
+    def _phuong_an_ngan(cls, value):
+        if any(len(x) > 500 for x in value):
+            raise ValueError("Mỗi phương án tối đa 500 ký tự")
+        return value
+
+    @model_validator(mode="after")
+    def _dap_an_trong_khoang(self):
+        if self.dap_an >= len(self.phuong_an):
+            raise ValueError("Đáp án phải là một chỉ số nằm trong các phương án")
+        return self
 
 
 class DeMoi(BaseModel):
-    ten: str
-    mon: str | None = None
-    so_phut: int = 45
-    cau_hoi: list[CauMoi] = []
+    ten: str = Field(max_length=200)
+    mon: ShortText | None = None
+    so_phut: int = Field(default=45, ge=1, le=600)
+    cau_hoi: list[CauMoi] = Field(default=[], max_length=200)
 
 
 @router.post("/de")
@@ -88,18 +104,38 @@ def danh_sach_de(_u: dict = Depends(chi_giao_vien)):
 # ---------------------------------------------------------------------------
 class CaMoi(BaseModel):
     de_thi: int
-    ten: str
-    lop: str | None = None
-    muc_giam_sat: str = "day_du"     # khong | co_ban | day_du
-    nhom: str | None = None          # tự suy ra từ mức nếu không truyền
-    quy_dinh: str = ""
-    phut_phan_hoi: int = 60
-    phut_xu_ly_gv: int = 1440
+    ten: str = Field(max_length=200)
+    lop: ShortText | None = None
+    muc_giam_sat: ShortText = "day_du"     # khong | co_ban | day_du
+    nhom: ShortText | None = None          # tự suy ra từ mức nếu không truyền
+    quy_dinh: str = Field(default="", max_length=4_000)
+    phut_phan_hoi: int = Field(default=60, le=10_080)
+    phut_xu_ly_gv: int = Field(default=1440, le=43_200)
     cho_phep_gia_han: bool = True
-    so_ngay_luu_anh: int = 30
-    ma_nghien_cuu_cap: str | None = None
-    giai_doan: str | None = None
-    ma_phong: str | None = None
+    so_ngay_luu_anh: int = Field(default=30, le=3_650)
+    ma_nghien_cuu_cap: ShortText | None = None
+    giai_doan: ShortText | None = None
+    ma_phong: ShortText | None = None
+
+
+def _tach_lop(nhan: str | None) -> list[str]:
+    """F1: "9A, 9B" -> ["9A", "9B"]; bỏ khoảng trắng, bỏ trùng, giữ thứ tự."""
+    thu_tu: dict[str, None] = {}
+    for phan in re.split(r"[,;]", nhan or ""):
+        if phan.strip():
+            thu_tu[phan.strip()] = None
+    return list(thu_tu)
+
+
+@router.get("/lop")
+def danh_sach_lop(_u: dict = Depends(chi_giao_vien)):
+    """F1: các lớp đang có học sinh, để chọn khi tạo ca."""
+    with db.ket_noi() as conn:
+        rows = conn.execute(
+            "SELECT lop, COUNT(*) so_hoc_sinh FROM nguoi_dung"
+            " WHERE vai_tro='hoc_sinh' AND lop IS NOT NULL AND lop<>'' GROUP BY lop ORDER BY lop"
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 @router.post("/ca")
@@ -109,13 +145,19 @@ def tao_ca(ca: CaMoi, _u: dict = Depends(chi_giao_vien)):
     muc = ca.muc_giam_sat if ca.muc_giam_sat in MUC_GIAM_SAT else "day_du"
     # Giữ nhãn nhóm cho phần so sánh cũ: không giám sát xếp vào đối chứng.
     nhom = ca.nhom or ("DC" if muc == "khong" else "TN")
+    cac_lop = _tach_lop(ca.lop)
     with db.ket_noi() as conn:
+        co_hs = {r["lop"] for r in conn.execute(
+            "SELECT DISTINCT lop FROM nguoi_dung WHERE vai_tro='hoc_sinh'")}
+        khong_co = [lop for lop in cac_lop if lop not in co_hs]
+        if khong_co:                       # F1: lớp gõ sai thì báo, không tạo ca rỗng trong im lặng
+            raise HTTPException(422, "Không có học sinh nào thuộc lớp: " + ", ".join(khong_co))
         cur = conn.execute(
             "INSERT INTO ca_thi (de_thi,ten,lop,nhom,muc_giam_sat,trang_thai,quy_dinh,"
             " phut_phan_hoi,phut_xu_ly_gv,cho_phep_gia_han,so_ngay_luu_anh,"
             " ma_nghien_cuu_cap,giai_doan,ma_phong,tao_luc)"
             " VALUES (?,?,?,?,?,'nhap',?,?,?,?,?,?,?,?,?)",
-            (ca.de_thi, ca.ten, ca.lop, nhom, muc, ca.quy_dinh.strip()[:4000],
+            (ca.de_thi, ca.ten, ", ".join(cac_lop) or None, nhom, muc, ca.quy_dinh.strip()[:4000],
              ca.phut_phan_hoi, ca.phut_xu_ly_gv, int(ca.cho_phep_gia_han),
              ca.so_ngay_luu_anh, ca.ma_nghien_cuu_cap, ca.giai_doan, ca.ma_phong,
              db.bay_gio()),
@@ -126,30 +168,33 @@ def tao_ca(ca: CaMoi, _u: dict = Depends(chi_giao_vien)):
             " (ca_thi, nguoi_dung, vai_tro_trong_ca) VALUES (?,?,'giao_vien')",
             (ca_id, _u["ma"]),
         )
-        if ca.lop:
+        for lop in cac_lop:
             conn.execute(
                 "INSERT OR IGNORE INTO ca_thi_nguoi_dung"
                 " (ca_thi, nguoi_dung, vai_tro_trong_ca)"
                 " SELECT ?, ma, 'hoc_sinh' FROM nguoi_dung"
                 " WHERE vai_tro='hoc_sinh' AND lop=?",
-                (ca_id, ca.lop),
+                (ca_id, lop),
             )
+        so_hoc_sinh = conn.execute(
+            "SELECT COUNT(*) n FROM ca_thi_nguoi_dung WHERE ca_thi=? AND vai_tro_trong_ca='hoc_sinh'",
+            (ca_id,)).fetchone()["n"]
         monitoring_config.ensure_initial(conn, ca_id, _u["ma"])
-    return {"ca_thi": ca_id, "muc_giam_sat": muc}
+    return {"ca_thi": ca_id, "muc_giam_sat": muc, "so_hoc_sinh": so_hoc_sinh}
 
 
 class SuaCa(BaseModel):
-    ten: str
-    lop: str | None = None
-    muc_giam_sat: str = "day_du"
-    quy_dinh: str = ""
-    phut_phan_hoi: int = 60
-    phut_xu_ly_gv: int = 1440
+    ten: str = Field(max_length=200)
+    lop: ShortText | None = None
+    muc_giam_sat: ShortText = "day_du"
+    quy_dinh: str = Field(default="", max_length=4_000)
+    phut_phan_hoi: int = Field(default=60, le=10_080)
+    phut_xu_ly_gv: int = Field(default=1440, le=43_200)
     cho_phep_gia_han: bool = True
-    so_ngay_luu_anh: int = 30
-    ma_nghien_cuu_cap: str | None = None
-    giai_doan: str | None = None
-    ma_phong: str | None = None
+    so_ngay_luu_anh: int = Field(default=30, le=3_650)
+    ma_nghien_cuu_cap: ShortText | None = None
+    giai_doan: ShortText | None = None
+    ma_phong: ShortText | None = None
 
 
 @router.put("/ca/{ca_id}")
@@ -181,7 +226,12 @@ def danh_sach_ca(user: dict = Depends(nguoi_dung_hien_tai)):
             "SELECT c.*, d.ten ten_de, d.so_phut,"
             " (SELECT COUNT(*) FROM bai_lam b WHERE b.ca_thi=c.id AND b.hoc_sinh=p.nguoi_dung) da_nop,"
             " (SELECT COUNT(*) FROM ca_thi_nguoi_dung h WHERE h.ca_thi=c.id"
-            "  AND h.vai_tro_trong_ca='hoc_sinh') so_hoc_sinh FROM ca_thi c"
+            "  AND h.vai_tro_trong_ca='hoc_sinh') so_hoc_sinh,"
+            " (SELECT COUNT(*) FROM cau_trac_nghiem q WHERE q.de_thi=c.de_thi) so_cau,"
+            " (SELECT COUNT(DISTINCT b2.hoc_sinh) FROM bai_lam b2 WHERE b2.ca_thi=c.id) so_da_nop,"
+            " (SELECT COUNT(*) FROM luot_lam_bai l WHERE l.ca_thi=c.id AND c.trang_thai='mo'"
+            "  AND NOT EXISTS (SELECT 1 FROM bai_lam b WHERE b.ca_thi=l.ca_thi AND b.hoc_sinh=l.hoc_sinh)"
+            " ) dang_lam FROM ca_thi c"
             " JOIN de_thi d ON d.id = c.de_thi"
             " JOIN ca_thi_nguoi_dung p ON p.ca_thi=c.id"
             " WHERE p.nguoi_dung=? AND p.vai_tro_trong_ca=?"
@@ -191,12 +241,66 @@ def danh_sach_ca(user: dict = Depends(nguoi_dung_hien_tai)):
     return [dict(d) for d in dong]
 
 
+@router.get("/ca/tat-ca")
+def tat_ca_ca_thi(user: dict = Depends(chi_giao_vien)):
+    """F4: mọi giáo viên thấy mọi ca (chỉ thông tin chung, không có dữ liệu máy hay bài làm).
+    Muốn thao tác trên ca của người khác thì phải tham gia ca đó."""
+    with db.ket_noi() as conn:
+        rows = conn.execute(
+            "SELECT c.id, c.ten, c.lop, c.trang_thai, d.ten ten_de,"
+            " (SELECT COUNT(*) FROM ca_thi_nguoi_dung h WHERE h.ca_thi=c.id"
+            "  AND h.vai_tro_trong_ca='hoc_sinh') so_hoc_sinh,"
+            " (SELECT group_concat(g.nguoi_dung) FROM ca_thi_nguoi_dung g WHERE g.ca_thi=c.id"
+            "  AND g.vai_tro_trong_ca='giao_vien') giao_vien"
+            " FROM ca_thi c JOIN de_thi d ON d.id=c.de_thi ORDER BY c.id DESC").fetchall()
+        tham_gia = {r["ca_thi"] for r in conn.execute(
+            "SELECT ca_thi FROM ca_thi_nguoi_dung WHERE nguoi_dung=? AND vai_tro_trong_ca='giao_vien'",
+            (user["ma"],))}
+    return [{**dict(r), "giao_vien": (r["giao_vien"] or "").split(",") if r["giao_vien"] else [],
+             "da_tham_gia": r["id"] in tham_gia} for r in rows]
+
+
+@router.post("/ca/{ca_id}/tham-gia")
+def tham_gia_ca(ca_id: int, user: dict = Depends(chi_giao_vien)):
+    """F4: giáo viên tự thêm mình vào một ca. Cổng bằng chứng vẫn tính theo từng giáo viên."""
+    with db.ket_noi() as conn:
+        if not conn.execute("SELECT 1 FROM ca_thi WHERE id=?", (ca_id,)).fetchone():
+            raise HTTPException(404, "Không tìm thấy ca thi")
+        moi = conn.execute(
+            "INSERT OR IGNORE INTO ca_thi_nguoi_dung (ca_thi, nguoi_dung, vai_tro_trong_ca)"
+            " VALUES (?,?,'giao_vien')", (ca_id, user["ma"])).rowcount
+        if moi:
+            audit.log(conn, user["ma"], "tham_gia_ca", "ca_thi", str(ca_id), ca_id)
+    return {"ca_thi": ca_id, "da_tham_gia": True}
+
+
+@router.post("/ca/{ca_id}/ma-du-thi/{hoc_sinh}")
+def cap_lai_ma_mot_hoc_sinh(ca_id: int, hoc_sinh: str, user: dict = Depends(chi_giao_vien)):
+    """F3: học sinh quên mã thì cấp mã mới cho riêng em đó, mã cũ của em đó hết hiệu lực."""
+    access.require_session_assignment(ca_id, user, "giao_vien")
+    return exam_access_codes.reissue_for_student(ca_id, user["ma"], hoc_sinh)
+
+
 @router.post("/ca/{ca_id}/ma-du-thi")
 def sinh_ma_du_thi(ca_id: int, user: dict = Depends(chi_giao_vien)):
     """Generate/rotate one short login code per assigned student."""
     access.require_session_assignment(ca_id, user, "giao_vien")
     return {"ca_thi": ca_id,
             "ma": exam_access_codes.generate_for_session(ca_id, user["ma"])}
+
+
+@router.delete("/ca/{ca_id}/ma-du-thi")
+def thu_hoi_tat_ca_ma(ca_id: int, user: dict = Depends(chi_giao_vien)):
+    """Withdraw every active exam code of the session (Phiếu 3: cấp/thu hồi mã dự thi)."""
+    access.require_session_assignment(ca_id, user, "giao_vien")
+    return {"ca_thi": ca_id, "so_ma_da_thu_hoi": exam_access_codes.revoke(ca_id, user["ma"])}
+
+
+@router.delete("/ca/{ca_id}/ma-du-thi/{hoc_sinh}")
+def thu_hoi_ma_mot_hoc_sinh(ca_id: int, hoc_sinh: str, user: dict = Depends(chi_giao_vien)):
+    access.require_session_assignment(ca_id, user, "giao_vien")
+    return {"ca_thi": ca_id, "hoc_sinh": hoc_sinh,
+            "so_ma_da_thu_hoi": exam_access_codes.revoke(ca_id, user["ma"], hoc_sinh)}
 
 
 @router.get("/nguoi-dung")
@@ -215,7 +319,8 @@ def thong_tin_cong_khai(ca_id: int, user: dict = Depends(nguoi_dung_hien_tai)):
     access.require_session_assignment(ca_id, user)
     with db.ket_noi() as conn:
         session = conn.execute(
-            "SELECT id,ten,muc_giam_sat,quy_dinh FROM ca_thi WHERE id=?", (ca_id,)
+            "SELECT id,ten,muc_giam_sat,quy_dinh,phut_phan_hoi,cho_phep_gia_han"
+            " FROM ca_thi WHERE id=?", (ca_id,)
         ).fetchone()
         if not session:
             raise HTTPException(404, "Không tìm thấy ca thi")
@@ -241,6 +346,7 @@ def thong_tin_cong_khai(ca_id: int, user: dict = Depends(nguoi_dung_hien_tai)):
             "tep_khoi_dong": "code/app/main.py",
             "kiem_thu": "code/tests/",
         },
+        "tran_gia_han_phut": feedback_deadlines.TRAN_GIA_HAN_PHUT,
         "tuyen_bo": "Cảnh báo chỉ là dữ liệu hỗ trợ; con người ra kết luận cuối cùng.",
         "chinh_sach_nghien_cuu": (
             "Dữ liệu nghiên cứu không dùng để tính điểm chính thức, "
@@ -292,6 +398,9 @@ def dat_phan_cong(ca_id: int, body: PhanCongCa,
             "INSERT INTO ca_thi_nguoi_dung"
             " (ca_thi, nguoi_dung, vai_tro_trong_ca) VALUES (?,?,?)", entries
         )
+        audit.log(conn, _u["ma"], "doi_phan_cong", "ca_thi", str(ca_id), ca_id,
+                  after={"giao_vien": sorted(requested_teachers),
+                         "so_hoc_sinh": len(requested_students)})
     return {"da_ghi": len(entries)}
 
 
@@ -317,6 +426,26 @@ def dat_cau_hinh(ca_id: int, body: CauHinhGiamSat,
     return monitoring_config.create_version(ca_id, _u["ma"], body.model_dump())
 
 
+def _xep_de(ca_id: int, hoc_sinh: str, cau, tron: bool) -> list[dict]:
+    """Thứ tự câu và phương án của một học sinh, dựng từ seed cố định.
+
+    Dùng chung cho việc phát đề và chấm điểm (M2): máy chủ tự dựng lại thứ tự này
+    khi chấm, không tin thứ tự do trình duyệt gửi lên.
+    """
+    rng = random.Random(f"{ca_id}:{hoc_sinh}")      # trộn cố định theo học sinh
+    ds = [dict(c) for c in cau]
+    for c in ds:
+        pa = json.loads(c["phuong_an"])
+        thu_tu = list(range(len(pa)))
+        if tron:
+            rng.shuffle(thu_tu)
+        c["phuong_an"] = [pa[i] for i in thu_tu]
+        c["anh_xa"] = thu_tu            # vị trí hiển thị -> vị trí gốc
+    if tron:
+        rng.shuffle(ds)
+    return ds
+
+
 @router.get("/ca/{ca_id}/de")
 def lay_de_cho_hoc_sinh(ca_id: int, hoc_sinh: str | None = None,
                         tron: bool = True,
@@ -332,23 +461,14 @@ def lay_de_cho_hoc_sinh(ca_id: int, hoc_sinh: str | None = None,
         ca = session_lifecycle.require_open(conn, ca_id)
         if attempt_clock.snapshot(conn, ca_id, hoc_sinh)["da_nop"]:
             raise HTTPException(409, "Em đã nộp bài ca này")
+        attempt_clock.note_issued(conn, ca_id, hoc_sinh, tron)       # C6, M2
         de = conn.execute("SELECT * FROM de_thi WHERE id = ?", (ca["de_thi"],)).fetchone()
         cau = conn.execute(
             "SELECT id, noi_dung, phuong_an, chuong, muc_do FROM cau_trac_nghiem"
             " WHERE de_thi = ? ORDER BY id", (ca["de_thi"],)
         ).fetchall()
 
-    rng = random.Random(f"{ca_id}:{hoc_sinh}")      # trộn cố định theo học sinh
-    ds = [dict(c) for c in cau]
-    for c in ds:
-        pa = json.loads(c["phuong_an"])
-        thu_tu = list(range(len(pa)))
-        if tron:
-            rng.shuffle(thu_tu)
-        c["phuong_an"] = [pa[i] for i in thu_tu]
-        c["anh_xa"] = thu_tu            # để chấm điểm ngược lại về đáp án gốc
-    if tron:
-        rng.shuffle(ds)
+    ds = _xep_de(ca_id, hoc_sinh, cau, tron)
 
     muc = ca["muc_giam_sat"] if "muc_giam_sat" in ca.keys() else (
         "day_du" if ca["nhom"] == "TN" else "khong")
@@ -379,7 +499,8 @@ class BaiNop(BaseModel):
     ca_thi: int
     hoc_sinh: str
     tra_loi: dict[str, int]          # {"cau_id": chi_so_phuong_an_da_tron}
-    anh_xa: dict[str, list[int]]     # {"cau_id": thu_tu_tron}
+    # M2: không còn nhận thứ tự trộn từ trình duyệt. Client cũ vẫn gửi anh_xa thì
+    # trường thừa bị bỏ qua; máy chủ tự dựng lại thứ tự từ seed.
 
 
 @router.post("/nop")
@@ -393,8 +514,8 @@ def nop_bai(bai: BaiNop, nd: dict = Depends(nguoi_dung_hien_tai)):
         # Open or just-closed, not paused, in time (server-side clock).
         attempt_clock.require_can_submit(conn, bai.ca_thi, hoc_sinh)
         cau = conn.execute(
-            "SELECT c.id, c.dap_an FROM cau_trac_nghiem c"
-            " JOIN ca_thi ca ON ca.de_thi = c.de_thi WHERE ca.id = ?",
+            "SELECT c.id, c.dap_an, c.phuong_an FROM cau_trac_nghiem c"
+            " JOIN ca_thi ca ON ca.de_thi = c.de_thi WHERE ca.id = ? ORDER BY c.id",
             (bai.ca_thi,),
         ).fetchall()
         dap_an_goc = {str(c["id"]): c["dap_an"] for c in cau}
@@ -415,12 +536,16 @@ def nop_bai(bai: BaiNop, nd: dict = Depends(nguoi_dung_hien_tai)):
         attempt_clock.require_round_one_open(conn, bai.ca_thi, hoc_sinh)
         attempt_clock.require_guidance_confirmed(conn, bai.ca_thi, hoc_sinh)
         attempt_clock.start(conn, bai.ca_thi, hoc_sinh)
+        issued = conn.execute("SELECT tron FROM phat_de WHERE ca_thi=? AND hoc_sinh=?",
+                              (bai.ca_thi, hoc_sinh)).fetchone()
+        thu_tu_goc = {str(c["id"]): c["anh_xa"] for c in _xep_de(
+            bai.ca_thi, hoc_sinh, cau, bool(issued["tron"]) if issued else True)}
         dung = 0
         for ma_cau, chon in bai.tra_loi.items():
-            thu_tu = bai.anh_xa.get(ma_cau)
-            if not thu_tu or chon is None or chon >= len(thu_tu):
+            thu_tu = thu_tu_goc.get(ma_cau)
+            if thu_tu is None or not 0 <= chon < len(thu_tu):      # M1
                 continue
-            if thu_tu[chon] == dap_an_goc.get(ma_cau):
+            if thu_tu[chon] == dap_an_goc[ma_cau]:
                 dung += 1
 
         diem = round(dung / len(dap_an_goc) * 10, 2) if dap_an_goc else 0.0

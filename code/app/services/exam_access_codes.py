@@ -18,10 +18,44 @@ def _hash(code: str) -> str:
     return hashlib.sha256(code.strip().upper().encode("utf-8")).hexdigest()
 
 
+def _new_unique_code(connection) -> tuple[str, str]:
+    while True:
+        code = "".join(secrets.choice(ALPHABET) for _ in range(CODE_LENGTH))
+        digest = _hash(code)
+        if not connection.execute("SELECT 1 FROM ma_du_thi WHERE ma_bam=?", (digest,)).fetchone():
+            return code, digest
+
+
+def reissue_for_student(session_id: int, teacher: str, student: str) -> dict:
+    """F3: a forgotten code is replaced for one student only; the others keep theirs."""
+    with db.ket_noi() as connection:
+        session = connection.execute(
+            "SELECT trang_thai FROM ca_thi WHERE id=?", (session_id,)).fetchone()
+        if not session:
+            raise HTTPException(404, "Không tìm thấy ca thi")
+        if session["trang_thai"] == "dong":
+            raise HTTPException(409, "Ca thi đã đóng; không thể cấp mã mới")
+        if not connection.execute(
+                "SELECT 1 FROM ca_thi_nguoi_dung WHERE ca_thi=? AND nguoi_dung=?"
+                " AND vai_tro_trong_ca='hoc_sinh'", (session_id, student)).fetchone():
+            raise HTTPException(404, "Học sinh này không thuộc ca thi")
+        connection.execute(
+            "UPDATE ma_du_thi SET dang_hoat_dong=0 WHERE ca_thi=? AND hoc_sinh=?",
+            (session_id, student))
+        code, digest = _new_unique_code(connection)
+        connection.execute(
+            "INSERT INTO ma_du_thi (ca_thi,hoc_sinh,ma_bam,dang_hoat_dong,tao_boi,tao_luc)"
+            " VALUES (?,?,?,1,?,?)", (session_id, student, digest, teacher, db.bay_gio()))
+        audit.log(connection, teacher, "cap_lai_ma_du_thi", "ca_thi", str(session_id),
+                  session_id, after={"hoc_sinh": student})
+    return {"ca_thi": session_id, "hoc_sinh": student, "ma_du_thi": code}
+
+
 def generate_for_session(session_id: int, teacher: str) -> list[dict]:
     """Rotate and return one plaintext code per assigned student.
 
     Plaintext is returned only by this call. SQLite stores only SHA-256 hashes.
+    The name and class travel with the code so the teacher can print a hand-out list.
     """
     with db.ket_noi() as connection:
         session = connection.execute(
@@ -31,11 +65,12 @@ def generate_for_session(session_id: int, teacher: str) -> list[dict]:
             raise HTTPException(404, "Không tìm thấy ca thi")
         if session["trang_thai"] == "dong":
             raise HTTPException(409, "Ca thi đã đóng; không thể sinh mã mới")
-        students = [row["nguoi_dung"] for row in connection.execute(
-            "SELECT nguoi_dung FROM ca_thi_nguoi_dung"
-            " WHERE ca_thi=? AND vai_tro_trong_ca='hoc_sinh' ORDER BY nguoi_dung",
+        students = connection.execute(
+            "SELECT p.nguoi_dung, n.ho_ten, n.lop FROM ca_thi_nguoi_dung p"
+            " JOIN nguoi_dung n ON n.ma=p.nguoi_dung"
+            " WHERE p.ca_thi=? AND p.vai_tro_trong_ca='hoc_sinh' ORDER BY n.lop, p.nguoi_dung",
             (session_id,),
-        ).fetchall()]
+        ).fetchall()
         if not students:
             raise HTTPException(400, "Ca thi chưa được phân công học sinh")
 
@@ -44,24 +79,34 @@ def generate_for_session(session_id: int, teacher: str) -> list[dict]:
         )
         result = []
         for student in students:
-            while True:
-                code = "".join(secrets.choice(ALPHABET) for _ in range(CODE_LENGTH))
-                digest = _hash(code)
-                exists = connection.execute(
-                    "SELECT 1 FROM ma_du_thi WHERE ma_bam=?", (digest,)
-                ).fetchone()
-                if not exists:
-                    break
+            code, digest = _new_unique_code(connection)
             connection.execute(
                 "INSERT INTO ma_du_thi"
                 " (ca_thi,hoc_sinh,ma_bam,dang_hoat_dong,tao_boi,tao_luc)"
                 " VALUES (?,?,?,1,?,?)",
-                (session_id, student, digest, teacher, db.bay_gio()),
+                (session_id, student["nguoi_dung"], digest, teacher, db.bay_gio()),
             )
-            result.append({"hoc_sinh": student, "ma_du_thi": code})
+            result.append({"hoc_sinh": student["nguoi_dung"], "ho_ten": student["ho_ten"],
+                           "lop": student["lop"], "ma_du_thi": code})
         audit.log(connection, teacher, "sinh_ma_du_thi", "ca_thi", str(session_id),
                   session_id, after={"so_hoc_sinh": len(result)})
     return result
+
+
+def revoke(session_id: int, teacher: str, student: str | None = None) -> int:
+    """Withdraw active codes of a session, or of one student. Returns how many were withdrawn.
+
+    A withdrawn code is marked 2, not 0: it no longer logs anyone in, but it still records that
+    the student is on code-only access, so the guessable student id does not become a way in.
+    """
+    with db.ket_noi() as connection:
+        cur = connection.execute(
+            "UPDATE ma_du_thi SET dang_hoat_dong=2 WHERE ca_thi=? AND dang_hoat_dong=1"
+            + (" AND hoc_sinh=?" if student else ""),
+            (session_id, student) if student else (session_id,))
+        audit.log(connection, teacher, "thu_hoi_ma_du_thi", "ca_thi", str(session_id), session_id,
+                  after={"hoc_sinh": student or "tat_ca", "so_ma_da_thu_hoi": cur.rowcount})
+        return cur.rowcount
 
 
 def resolve(code: str) -> dict | None:
@@ -96,6 +141,6 @@ def student_has_active_open_code(student: str) -> bool:
     with db.ket_noi() as connection:
         return connection.execute(
             "SELECT 1 FROM ma_du_thi m JOIN ca_thi c ON c.id=m.ca_thi"
-            " WHERE m.hoc_sinh=? AND m.dang_hoat_dong=1 AND c.trang_thai='mo' LIMIT 1",
+            " WHERE m.hoc_sinh=? AND m.dang_hoat_dong IN (1,2) AND c.trang_thai='mo' LIMIT 1",
             (student,),
         ).fetchone() is not None
