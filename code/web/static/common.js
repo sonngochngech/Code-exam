@@ -16,19 +16,24 @@ const API = {
       const nd = Phien.lay();
       if (nd && nd.token) tuy_chon.headers["Authorization"] = "Bearer " + nd.token;
     } catch (e) {}
-    const r = await fetch(duong_dan, tuy_chon);
+    let r;
+    try {
+      r = await fetch(duong_dan, tuy_chon);
+    } catch (e) {                                  // mất mạng: câu mặc định của trình duyệt là tiếng Anh
+      throw new Error("Mất kết nối mạng. Vui lòng kiểm tra mạng rồi thử lại.");
+    }
     // Hết phiên hoặc chưa đăng nhập: xóa phiên và đưa về trang chủ.
     if (r.status === 401 && duong_dan !== "/api/dang-nhap") {   // L1: sai mã không phải hết phiên
       Phien.xoa();
       if (location.pathname !== "/vao") location.href = "/vao";
-      throw new Error("Phiên đã hết hạn, em đăng nhập lại nhé.");
+      throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
     }
     if (!r.ok) {
-      let thong_bao = `Máy chủ trả về lỗi ${r.status}`;
+      let thong_bao = "Hệ thống đang gặp trục trặc. Vui lòng thử lại sau ít phút.";
       try {
         const j = await r.json();
         if (j.detail) thong_bao = typeof j.detail === "string"
-          ? j.detail : JSON.stringify(j.detail);
+          ? j.detail : "Thông tin gửi lên chưa hợp lệ. Vui lòng kiểm tra lại các ô đã nhập.";
       } catch (e) {}
       const loi = new Error(thong_bao);
       loi.status = r.status;
@@ -262,7 +267,7 @@ const TRANG = [
   { duong_dan: "/thong-tin",       ten: "Quy định giám sát", vai_tro: "ai", icon: "khoa" },
   { duong_dan: "/bang-dieu-khien", ten: "Tiến độ lớp",       vai_tro: "giao_vien", icon: "bieu_do" },
   { duong_dan: "/coi-thi",         ten: "Coi thi",           vai_tro: "giao_vien", icon: "mat" },
-  { duong_dan: "/quan-tri",        ten: "Quản lý nội dung",  vai_tro: "giao_vien", icon: "banh_rang" },
+  { duong_dan: "/quan-tri",        ten: "Quản lý",            vai_tro: "giao_vien", icon: "banh_rang" },
 ];
 
 // Chọn biểu tượng cho thanh tiêu đề theo trang đang mở, để mỗi trang có logo
@@ -381,6 +386,16 @@ function trongRong(ten_icon, tieu_de, mo_ta) {
     <p class="mo" style="margin:0">${thoat(mo_ta)}</p></div>`;
 }
 
+// Thời lượng dễ đọc: 1440 phút thành "1 ngày", 90 phút thành "1 giờ 30 phút".
+function dinhDangPhut(phut) {
+  const p = Math.max(0, Math.ceil(phut));
+  if (p < 60) return p + " phút";
+  const g = Math.floor(p / 60), m = p % 60;
+  if (g < 24) return m ? `${g} giờ ${m} phút` : `${g} giờ`;
+  const n = Math.floor(g / 24), gg = g % 24;
+  return gg ? `${n} ngày ${gg} giờ` : `${n} ngày`;
+}
+
 // Tải tệp từ endpoint cần đăng nhập. Không dùng thẻ a trỏ thẳng vì điều hướng
 // trình duyệt không gửi được token; phải tải bằng fetch rồi lưu blob.
 async function taiFile(url, tenGoiY) {
@@ -390,7 +405,7 @@ async function taiFile(url, tenGoiY) {
       headers: nd && nd.token ? { Authorization: "Bearer " + nd.token } : {},
     });
     if (r.status === 401) { Phien.xoa(); location.href = "/vao"; return; }
-    if (!r.ok) throw new Error("Không tải được tệp (" + r.status + ")");
+    if (!r.ok) throw new Error("Không tải được tệp. Vui lòng thử lại.");
     const blob = await r.blob();
     let ten = tenGoiY || "du-lieu.csv";
     const cd = r.headers.get("Content-Disposition") || "";

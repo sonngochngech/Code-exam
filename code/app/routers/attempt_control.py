@@ -41,7 +41,7 @@ def control(session_id: int, student: str, body: Control,
     if not reason:
         raise HTTPException(400, "Phải ghi lý do điều chỉnh")
     if body.hanh_dong not in ACTIONS:
-        raise HTTPException(400, "Hành động không hợp lệ")
+        raise HTTPException(400, "Thao tác không hợp lệ.")
     if body.hanh_dong == "them_gio" and body.so_giay <= 0:
         raise HTTPException(400, "Số giây thêm phải lớn hơn 0")
     with db.ket_noi() as conn:
@@ -53,13 +53,13 @@ def control(session_id: int, student: str, body: Control,
             raise HTTPException(404, "Học sinh không thuộc ca thi")
         current = attempt_clock.snapshot(conn, session_id, student)
         if current["trang_thai_ca"] != "mo":
-            raise HTTPException(409, "Ca thi chưa mở hoặc đã đóng")
+            raise HTTPException(409, "Ca thi chưa mở hoặc đã đóng.")
         if current["da_nop"] and body.hanh_dong != "them_gio":
             raise HTTPException(409, "Học sinh đã nộp bài")
         if body.hanh_dong == "tam_dung" and current["tam_dung"]:
-            raise HTTPException(409, "Bài thi đã đang tạm dừng")
+            raise HTTPException(409, "Bài thi của em này đang tạm dừng rồi.")
         if body.hanh_dong == "tiep_tuc" and not current["tam_dung"]:
-            raise HTTPException(409, "Bài thi không ở trạng thái tạm dừng")
+            raise HTTPException(409, "Bài thi của em này không đang tạm dừng.")
         conn.execute(
             "INSERT INTO dieu_chinh_bai_thi"
             " (ca_thi,hoc_sinh,giao_vien,hanh_dong,so_giay,ly_do,tao_luc)"
@@ -89,7 +89,7 @@ def start_attempt(session_id: int, user: dict = Depends(nguoi_dung_hien_tai)):
     with db.ket_noi() as conn:
         state = attempt_clock.snapshot(conn, session_id, student)
         if state["trang_thai_ca"] != "mo":
-            raise HTTPException(409, "Ca thi chưa mở hoặc đã đóng")
+            raise HTTPException(409, "Ca thi chưa mở hoặc đã đóng.")
         if state["da_nop"]:
             raise HTTPException(409, "Em đã nộp bài")
         attempt_clock.require_guidance_confirmed(conn, session_id, student)

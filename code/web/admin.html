@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Quản trị</title>
+<title>Quản lý</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -18,7 +18,7 @@
 <script src="/static/common.js"></script>
 <script>
 const nd = chiGiaoVien();
-dungKhung("Quản lý nội dung", "Học liệu, đề thi và ca thi");
+dungKhung("Quản lý", "Học sinh, học liệu, đề thi và ca thi");
 if (!nd) throw new Error("dung lai");
 
 const MUC = [
@@ -71,8 +71,10 @@ async function veHocLieu() {
           </select>
         </div>
         <div class="o">
-          <label for="tep">Chọn file</label>
-          <input type="file" id="tep" accept=".docx,.txt,.md">
+          <label for="tep">Tệp đề cương</label>
+          <div class="chon-tep"><span class="khung-chon"><input type="file" id="tep" accept=".docx,.txt,.md">
+            <label for="tep" class="nut phu nut-chon">Chọn tệp từ máy</label></span>
+            <span class="mo-nho" id="ten-tep">Chưa chọn tệp</span></div>
         </div>
         <button id="nut-nap-tep">Nạp vào kho</button>
       </div>
@@ -92,7 +94,7 @@ async function veHocLieu() {
         <div class="o tim-kiem">
           <label for="tim-doan">Tìm trong học liệu</label>
           <input id="tim-doan" type="search" autocomplete="off"
-                 placeholder="Từ khóa trong chương, bài, dạng bài hoặc nội dung" maxlength="100">
+                 placeholder="Tìm theo chương, bài, nội dung hoặc tên tệp" maxlength="100">
         </div>
         <div class="o">
           <label for="loc-mon">Môn</label>
@@ -113,6 +115,7 @@ async function veHocLieu() {
       <div class="giua cach" id="phan-trang"></div>
     </div>`;
 
+  document.getElementById("tep").onchange = () => capNhatTenTep("tep", "ten-tep");
   document.getElementById("nut-nap-tep").onclick = napTep;
   let henTim = null;
   document.getElementById("tim-doan").oninput = () => {
@@ -158,7 +161,7 @@ function taiLenCoTienDo(url, fd, khiTienDo) {
       try { j = JSON.parse(x.responseText); } catch (e) { /* phản hồi không phải JSON */ }
       if (x.status >= 200 && x.status < 300) return giaiQuyet(j);
       if (x.status === 401) { Phien.xoa(); location.href = "/vao"; }
-      const loi = new Error((j && typeof j.detail === "string" && j.detail) || `Máy chủ trả về lỗi ${x.status}`);
+      const loi = new Error((j && typeof j.detail === "string" && j.detail) || "Hệ thống đang gặp trục trặc. Thầy cô thử lại sau ít phút.");
       loi.status = x.status;
       tuChoi(loi);
     };
@@ -167,10 +170,16 @@ function taiLenCoTienDo(url, fd, khiTienDo) {
   });
 }
 
+// Hiện tên tệp đã chọn cạnh nút chọn tệp (chữ gốc của trình duyệt có thể là tiếng Anh).
+function capNhatTenTep(idTep, idTen) {
+  const f = document.getElementById(idTep).files[0];
+  document.getElementById(idTen).textContent = f ? f.name : "Chưa chọn tệp";
+}
+
 async function napTep() {
   const tep = document.getElementById("tep").files[0];
   const o = document.getElementById("ket-qua-nap");
-  if (!tep) { o.innerHTML = '<div class="canh-bao-o">Thầy cô chọn file trước đã.</div>'; return; }
+  if (!tep) { o.innerHTML = '<div class="canh-bao-o">Thầy cô chọn tệp trước đã.</div>'; return; }
 
   const nut = document.getElementById("nut-nap-tep");
   const khung = document.getElementById("tien-do-nap");
@@ -192,9 +201,10 @@ async function napTep() {
     thanh.style.width = "100%";
     chu.textContent = "Hoàn tất.";
     o.innerHTML = `<div class="canh-bao-o luc">Đã nạp <b>${kq.so_doan}</b> đoạn
-       từ file ${thoat(kq.tep)} vào môn ${thoat(kq.mon)}.</div>`;
+       từ tệp ${thoat(kq.tep)} vào môn ${thoat(kq.mon)}.</div>`;
     thongBao(`Nạp xong ${kq.so_doan} đoạn`, "xong");
     document.getElementById("tep").value = "";
+    capNhatTenTep("tep", "ten-tep");
     await napChuong();
     napDanhSachDoan(1);
   } catch (e) {
@@ -328,7 +338,7 @@ async function napDanhSachDoan(trang) {
   o.innerHTML = `<div class="cuon-ngang"><table>
     <thead><tr><th class="hep"><input type="checkbox" id="chon-tat-ca" aria-label="Chọn cả trang này"></th>
       <th>Môn</th><th>Chương</th><th>Bài</th><th>Dạng bài</th>
-      <th>Trích</th><th></th></tr></thead>
+      <th>Nguồn</th><th>Trích</th><th></th></tr></thead>
     <tbody>${kq.danh_sach.map(d => `<tr data-id="${d.id}">
       <td class="hep"><input type="checkbox" class="chon-doan" data-id="${d.id}"
             aria-label="Chọn đoạn ${d.id}" ${daChon.has(d.id) ? "checked" : ""}></td>
@@ -336,6 +346,7 @@ async function napDanhSachDoan(trang) {
       <td>${thoat(d.chuong)}</td>
       <td>${thoat(d.bai)}</td>
       <td>${d.dang_bai ? thoat(d.dang_bai) : '<span class="mo-nho">chưa có</span>'}</td>
+      <td class="mo-nho">${thoat(d.nguon || "")}</td>
       <td><div class="mo-nho cat-dong">${thoat(d.trich)}...</div></td>
       <td class="phai hep">
         <button class="nhe nho" data-xem="${d.id}">Xem</button>
@@ -447,7 +458,7 @@ async function veTongQuan() {
       <td>${c.ho_tro_cho ? `<span class="nhan do nhap-nhay">${c.ho_tro_cho} chờ</span>` : '<span class="mo-nho">Không</span>'}</td>
       <td>${chuaMoKhoa ? '<span class="mo-nho">Khóa đến sau vòng 1</span>' : c.canh_bao === null ? "—" : `<span class="nhan cam">${c.canh_bao}</span>`}</td>
       <td class="mo-nho">${c.da_nop
-          ? `Vi phạm ${kl.vi_pham} · Cần làm rõ ${kl.can_lam_ro} · Không vi phạm ${kl.khong_vi_pham} · Chưa ${kl.chua_ket_luan}`
+          ? `Vi phạm ${kl.vi_pham} · Cần làm rõ ${kl.can_lam_ro} · Không vi phạm ${kl.khong_vi_pham} · Chưa kết luận ${kl.chua_ket_luan}`
           : "Chưa có bài nộp"}</td>
       <td class="phai">
         <a class="nut nhe nho" href="/coi-thi?ca=${c.id}">${c.trang_thai === "nhap" ? "Mở ca" : "Coi thi"}</a>
@@ -465,7 +476,7 @@ async function veTongQuan() {
         : the_so("canh_bao", "cam", t.canh_bao, "Cảnh báo hệ thống",
             t.ca_chua_mo_khoa ? `chưa gồm ${t.ca_chua_mo_khoa} ca còn khóa` : "Dữ liệu hỗ trợ, không phải kết luận")}
       ${the_so("ho_tro", t.ho_tro_cho ? "do nhap-nhay" : "luc", t.ho_tro_cho, "Hỗ trợ đang chờ",
-          t.ho_tro_cho ? "Cần thầy cô xử lí" : "Không có yêu cầu mới")}
+          t.ho_tro_cho ? "Cần thầy cô xử lý" : "Không có yêu cầu mới")}
     </div>
     <div class="the">
       <div class="gon-gang"><h2 style="margin:0">Các ca của thầy cô</h2>
@@ -496,12 +507,14 @@ async function veHocSinh() {
   oNoiDung.innerHTML = `
     <div class="the">
       <h2>Nhập danh sách học sinh</h2>
-      <p class="mo">Tải lên tệp <b>.csv</b> (lưu dạng UTF-8) hoặc <b>.xlsx</b>. Dòng đầu là tiêu đề với các cột
-         <code>ma</code>, <code>ho_ten</code> và (không bắt buộc) <code>lop</code>. Hệ thống kiểm tra trước,
+      <p class="mo">Tải lên tệp Excel <b>.xlsx</b> hoặc <b>.csv</b> (lưu dạng UTF-8; trong Excel chọn "CSV UTF-8").
+         Dòng đầu là tiêu đề gồm các cột <b>Mã</b>, <b>Họ tên</b> và (không bắt buộc) <b>Lớp</b>. Hệ thống kiểm tra trước,
          báo rõ từng dòng lỗi, rồi mới nhập các dòng hợp lệ. <a href="#" id="tai-mau">Tải tệp mẫu</a></p>
       <div class="hang">
-        <div class="o"><label for="tep-hs">Chọn tệp</label>
-          <input type="file" id="tep-hs" accept=".csv,.xlsx"></div>
+        <div class="o"><label for="tep-hs">Tệp danh sách học sinh</label>
+          <div class="chon-tep"><span class="khung-chon"><input type="file" id="tep-hs" accept=".csv,.xlsx">
+            <label for="tep-hs" class="nut phu nut-chon">Chọn tệp từ máy</label></span>
+            <span class="mo-nho" id="ten-tep-hs">Chưa chọn tệp</span></div></div>
         <button id="kiem-tra-tep">Kiểm tra tệp</button>
       </div>
       <div id="bao-cao-nhap" class="cach-nho" aria-live="polite"></div>
@@ -522,10 +535,11 @@ async function veHocSinh() {
     </div>`;
   document.getElementById("tai-mau").onclick = e => {
     e.preventDefault();
-    const blob = new Blob(["\ufeffma,ho_ten,lop\nHS001,Nguyễn Văn An,9A\nHS002,Trần Thị Bình,9A\n"], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["\ufeffMã,Họ tên,Lớp\nHS001,Nguyễn Văn An,9A\nHS002,Trần Thị Bình,9A\n"], { type: "text/csv;charset=utf-8" });
     const a = tao("a"); a.href = URL.createObjectURL(blob); a.download = "mau-danh-sach-hoc-sinh.csv"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
+  document.getElementById("tep-hs").onchange = () => capNhatTenTep("tep-hs", "ten-tep-hs");
   document.getElementById("kiem-tra-tep").onclick = () => nhapTep(false);
   document.getElementById("them-hs").onclick = () => hopHocSinh(null);
   document.getElementById("tim-hs").oninput = veBangHocSinh;
@@ -626,6 +640,7 @@ async function nhapTep(ghi) {
         ${kq.loi.length ? `${kq.loi.length} dòng lỗi được bỏ qua (liệt kê bên dưới).` : ""}</div>` + veLoiNhap(kq);
       thongBao(`Đã thêm ${kq.da_them} học sinh`, "xong");
       document.getElementById("tep-hs").value = "";
+      capNhatTenTep("tep-hs", "ten-tep-hs");
       await napHocSinh();
       return;
     }
@@ -653,13 +668,52 @@ const TEN_HANH_DONG = {
   tao_hoc_sinh: "Thêm học sinh", sua_hoc_sinh: "Sửa học sinh", xoa_hoc_sinh: "Xóa học sinh",
   nhap_hoc_sinh: "Nhập danh sách học sinh", xoa_nhieu_hoc_lieu: "Xóa nhiều học liệu",
   sua_nhieu_hoc_lieu: "Sửa nhãn nhiều học liệu",
+  cap_lai_ma_du_thi: "Cấp lại mã dự thi cho một em", nap_hoc_lieu: "Nạp học liệu",
+  nop_phan_doan: "Nộp phán đoán", tham_gia_ca: "Tham gia ca thi", doi_phan_cong: "Đổi phân công ca",
+  xu_ly_ho_tro: "Xử lý yêu cầu hỗ trợ",
 };
+const TEN_DOI_TUONG = {
+  ca_thi: "Ca thi", hoc_sinh: "Học sinh", nguoi_dung: "Tài khoản", phan_doan: "Phán đoán", hoc_lieu: "Học liệu",
+  yeu_cau_ho_tro: "Yêu cầu hỗ trợ", ho_so: "Hồ sơ", moc_bat_thuong: "Sự kiện", cau_hinh_giam_sat: "Ngưỡng giám sát",
+};
+const TEN_TRUONG = {
+  hanh_dong: "Thao tác", so_giay: "Số giây", ly_do: "Lý do", tep: "Tệp", mon: "Môn", so_doan: "Số đoạn",
+  so_hoc_sinh: "Số học sinh", ho_ten: "Họ tên", lop: "Lớp", vong: "Vòng", muc: "Mức nghi ngờ", ghi_chu: "Ghi chú",
+  trang_thai: "Trạng thái", can_cu: "Căn cứ", phien_ban: "Phiên bản", nguoi_xu_ly: "Người xử lý", tao_luc: "Lúc",
+  them_phut: "Số phút thêm", tong: "Tổng số dòng", da_them: "Đã thêm", so_loi: "Số dòng lỗi",
+  so_ma_da_thu_hoi: "Số mã đã thu hồi", so_anh_da_xoa: "Số ảnh đã xóa", so_ngay_luu_anh: "Số ngày lưu ảnh",
+  moc_ids: "Sự kiện liên kết", phan_hoi_gv: "Cách xử lý", giay_gian_doan: "Thời gian gián đoạn (giây)",
+  giao_vien: "Giáo viên", so_doan_da_xoa: "Số đoạn đã xóa", so_doan_da_sua: "Số đoạn đã sửa", chuong: "Chương",
+  bai: "Bài", dang_bai: "Dạng bài", loai: "Loại", ids: "Các đoạn", bai_lam: "Bài làm", moc_bat_thuong: "Sự kiện",
+  luu_anh_ngay: "Số ngày lưu ảnh",
+};
+const TEN_GIA_TRI = {
+  tam_dung: "Tạm dừng", tiep_tuc: "Tiếp tục", them_gio: "Thêm giờ", khong_vi_pham: "Không vi phạm",
+  can_lam_ro: "Cần làm rõ", vi_pham: "Vi phạm", moi: "Mới", dang_xu_ly: "Đang xử lý", xong: "Xong",
+  tat_ca: "Tất cả", nhap: "Nháp", mo: "Đang mở", dong: "Đã đóng",
+};
+function veGiaTriNhatKy(v) {
+  if (v === null || v === undefined || v === "") return "(trống)";
+  if (Array.isArray(v)) return v.map(veGiaTriNhatKy).join(", ");
+  if (typeof v === "object")
+    return Object.entries(v).map(([k, x]) => `${TEN_TRUONG[k] || k.replace(/_/g, " ")}: ${veGiaTriNhatKy(x)}`).join("; ");
+  return TEN_GIA_TRI[v] || String(v);
+}
+function veDuLieuNhatKy(chuoi) {
+  try { return veGiaTriNhatKy(JSON.parse(chuoi)); } catch (e) { return chuoi; }
+}
+function veDoiTuongNhatKy(e) {
+  const loai = TEN_DOI_TUONG[e.loai_doi_tuong] || "";
+  const ma = String(e.ma_doi_tuong || "").replace(/^vong-(\d)$/, "vòng $1");
+  const ca = e.ca_thi ? ` · ca thi số ${e.ca_thi}` : "";
+  return `${loai} ${ma}`.trim() + ca;
+}
 
 async function veNhatKy() {
   const ca = await API.get("/api/exam/ca");
   oNoiDung.innerHTML = `
     <div class="the">
-      <h2>Nhật ký kiểm toán</h2>
+      <h2>Nhật ký thao tác</h2>
       <p class="mo">Ai làm gì, lúc nào. Nhật ký chỉ ghi thêm: không ai sửa hay xóa được, kể cả thầy cô.
          Thầy cô xem được các ca mình phụ trách và những thao tác chung của chính mình.</p>
       <div class="thanh-loc">
@@ -696,7 +750,7 @@ async function napNhatKy(trang) {
     return;
   }
   const chiTiet = e => {
-    const mau = [e.du_lieu_truoc && `Trước: ${e.du_lieu_truoc}`, e.du_lieu_sau && `Sau: ${e.du_lieu_sau}`].filter(Boolean);
+    const mau = [e.du_lieu_truoc && `Trước: ${veDuLieuNhatKy(e.du_lieu_truoc)}`, e.du_lieu_sau && `Sau: ${veDuLieuNhatKy(e.du_lieu_sau)}`].filter(Boolean);
     return mau.length ? `<details><summary class="mo-nho">Xem</summary><div class="mo-nho" style="word-break:break-word">${mau.map(thoat).join("<br>")}</div></details>` : "";
   };
   o.innerHTML = `<div class="cuon-ngang"><table>
@@ -705,7 +759,7 @@ async function napNhatKy(trang) {
       <td class="mo-nho">${dinhDangNgay(e.tao_luc)}</td>
       <td><b>${thoat(e.chu_the)}</b></td>
       <td>${thoat(TEN_HANH_DONG[e.hanh_dong] || e.hanh_dong)}</td>
-      <td class="mo-nho">${thoat(e.loai_doi_tuong || "")} ${thoat(e.ma_doi_tuong || "")}${e.ca_thi ? ` · ca ${e.ca_thi}` : ""}</td>
+      <td class="mo-nho">${thoat(veDoiTuongNhatKy(e))}</td>
       <td>${chiTiet(e)}</td></tr>`).join("")}</tbody></table></div>`;
   const soTrang = Math.ceil(kq.tong / kq.moi_trang);
   document.getElementById("phan-trang-nk").innerHTML = soTrang > 1
@@ -831,14 +885,20 @@ async function veCaThi() {
           </select></div>
         <div class="o" style="flex-basis:100%"><label for="quy-dinh-ca">Quy định công bố trước thi</label>
           <textarea id="quy-dinh-ca" rows="3" placeholder="Tài liệu được dùng, quy định AI, xin ra ngoài, mất mạng và lỗi thời gian"></textarea></div>
-        <div class="o"><label for="phut-phan-hoi">Phút phản hồi</label><input id="phut-phan-hoi" type="number" min="1" value="60"></div>
-        <div class="o"><label for="phut-xu-ly">Phút xử lý giáo viên</label><input id="phut-xu-ly" type="number" min="1" value="1440"></div>
-        <div class="o"><label for="ngay-luu-anh">Số ngày lưu ảnh bằng chứng</label><input id="ngay-luu-anh" type="number" min="1" value="30"></div>
-        <div class="o"><label for="ma-cap">Mã nghiên cứu ghép cặp (nếu có)</label><input id="ma-cap" placeholder="Ví dụ: NC-9A-01"></div>
-        <div class="o"><label for="giai-doan">Giai đoạn</label><select id="giai-doan">
-          <option value="">Không ghép cặp</option><option value="tien_tac_dong">Tiền tác động</option>
-          <option value="hau_tac_dong">Hậu tác động</option></select></div>
-        <div class="o"><label for="ma-phong">Mã phòng nghiên cứu</label><input id="ma-phong" placeholder="Ví dụ: P9A"></div>
+        <div class="o"><label for="phut-phan-hoi">Học sinh được phản hồi sau khi nộp (phút)</label><input id="phut-phan-hoi" type="number" min="1" value="60"></div>
+        <div class="o"><label for="phut-xu-ly">Thầy cô xử lý xong trong (phút)</label><input id="phut-xu-ly" type="number" min="1" value="1440"></div>
+        <div class="o"><label for="ngay-luu-anh">Giữ ảnh bằng chứng trong (ngày)</label><input id="ngay-luu-anh" type="number" min="1" value="30"></div>
+        <details class="o" style="flex-basis:100%">
+          <summary>Tùy chọn nghiên cứu (không bắt buộc)</summary>
+          <p class="mo-nho">Chỉ điền khi ca này là một trong hai ca trước và sau tác động trong nghiên cứu ghép cặp.</p>
+          <div class="hang">
+            <div class="o"><label for="ma-cap">Mã nghiên cứu ghép cặp</label><input id="ma-cap" placeholder="Ví dụ: NC-9A-01"></div>
+            <div class="o"><label for="giai-doan">Giai đoạn</label><select id="giai-doan">
+              <option value="">Không ghép cặp</option><option value="tien_tac_dong">Trước tác động</option>
+              <option value="hau_tac_dong">Sau tác động</option></select></div>
+            <div class="o"><label for="ma-phong">Mã nhóm học sinh nghiên cứu</label><input id="ma-phong" placeholder="Ví dụ: P9A"></div>
+          </div>
+        </details>
         <label><input id="cho-gia-han" type="checkbox" checked aria-label="Cho phép gia hạn có lý do"> Cho phép gia hạn có lý do</label>
         <button id="nut-tao-ca">Tạo nháp</button>
       </div>
@@ -868,7 +928,7 @@ function veBangCa(ca) {
   const o = document.getElementById("bang-ca");
   if (!o) return;
   o.innerHTML = ca.length ? `<div class="cuon-ngang"><table>
-        <thead><tr><th>Mã</th><th>Tên ca</th><th>Lớp</th><th>Trạng thái</th><th>Học sinh</th><th>Nhóm</th>
+        <thead><tr><th>Mã</th><th>Tên ca</th><th>Lớp</th><th>Trạng thái</th><th>Học sinh</th><th>Giám sát</th>
           <th>Đề</th><th></th></tr></thead>
         <tbody>${ca.map(c => `<tr>
           <td>${c.id}</td><td><b>${thoat(c.ten)}</b>
@@ -984,7 +1044,7 @@ function oCsv(gt) {
 }
 
 function taiCsvMa(tenCa, ma) {
-  const dong = ["hoc_sinh,ho_ten,lop,ma_du_thi",
+  const dong = ["Học sinh,Họ tên,Lớp,Mã dự thi",
     ...ma.map(x => [x.hoc_sinh, x.ho_ten, x.lop, x.ma_du_thi].map(oCsv).join(","))];
   const blob = new Blob(["﻿" + dong.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
@@ -1041,7 +1101,7 @@ async function sinhMaDuThi(caId, tenCa) {
     the.innerHTML = `<h2>Mã dự thi: ${thoat(tenCa)}</h2>
       <p class="canh-bao-o">Mã chỉ xuất hiện một lần. Thầy cô hãy sao chép và gửi
       riêng cho từng học sinh trước khi đóng cửa sổ này.</p>
-      <p class="mo">Mỗi mã chỉ dùng cho đúng học sinh và ca này. Máy chủ chỉ lưu bản băm và không thể hiện lại các mã này.</p>
+      <p class="mo">Mỗi mã chỉ dùng cho đúng học sinh và ca này. Hệ thống không lưu mã gốc nên sau này không hiện lại được. Học sinh quên mã thì dùng nút Cấp lại mã 1 em.</p>
       <div class="cuon-ngang"><table><thead><tr><th>Học sinh</th><th>Lớp</th><th>Mã dự thi</th><th></th></tr></thead>
       <tbody>${kq.ma.map(x => `<tr><td><b>${thoat(x.hoc_sinh)}</b><div class="mo-nho">${thoat(x.ho_ten || "")}</div></td>
         <td>${thoat(x.lop || "")}</td>
@@ -1110,18 +1170,18 @@ function suaCa(ca) {
   the.innerHTML = `<h2>Sửa ca nháp</h2>
     <p class="mo">Chỉ sửa được khi ca còn là bản nháp và chưa có bài làm.</p>
     <div class="hang">
-      ${o("sc-ten", "Tên ca", ca.ten)}${o("sc-lop", "Lớp/phòng", ca.lop)}
+      ${o("sc-ten", "Tên ca", ca.ten)}${o("sc-lop", "Lớp", ca.lop)}
       <div class="o" style="flex-basis:100%"><label for="sc-quy-dinh">Quy định công bố trước thi</label>
         <textarea id="sc-quy-dinh" rows="3">${thoat(ca.quy_dinh || "")}</textarea></div>
-      ${o("sc-phan-hoi", "Phút phản hồi", ca.phut_phan_hoi || 60, "number")}
-      ${o("sc-xu-ly", "Phút xử lý giáo viên", ca.phut_xu_ly_gv || 1440, "number")}
-      ${o("sc-luu-anh", "Số ngày lưu ảnh", ca.so_ngay_luu_anh || 30, "number")}
-      ${o("sc-ma-cap", "Mã nghiên cứu ghép cặp", ca.ma_nghien_cuu_cap)}
+      ${o("sc-phan-hoi", "Học sinh được phản hồi sau khi nộp (phút)", ca.phut_phan_hoi || 60, "number")}
+      ${o("sc-xu-ly", "Thầy cô xử lý xong trong (phút)", ca.phut_xu_ly_gv || 1440, "number")}
+      ${o("sc-luu-anh", "Giữ ảnh bằng chứng trong (ngày)", ca.so_ngay_luu_anh || 30, "number")}
+      ${o("sc-ma-cap", "Mã nghiên cứu ghép cặp (không bắt buộc)", ca.ma_nghien_cuu_cap)}
       <div class="o"><label for="sc-giai-doan">Giai đoạn</label><select id="sc-giai-doan">
         <option value="">Không ghép cặp</option>
-        <option value="tien_tac_dong" ${ca.giai_doan === "tien_tac_dong" ? "selected" : ""}>Tiền tác động</option>
-        <option value="hau_tac_dong" ${ca.giai_doan === "hau_tac_dong" ? "selected" : ""}>Hậu tác động</option></select></div>
-      ${o("sc-ma-phong", "Mã phòng nghiên cứu", ca.ma_phong)}
+        <option value="tien_tac_dong" ${ca.giai_doan === "tien_tac_dong" ? "selected" : ""}>Trước tác động</option>
+        <option value="hau_tac_dong" ${ca.giai_doan === "hau_tac_dong" ? "selected" : ""}>Sau tác động</option></select></div>
+      ${o("sc-ma-phong", "Mã nhóm học sinh nghiên cứu (không bắt buộc)", ca.ma_phong)}
     </div>
     <p id="sc-loi" class="mo" style="color:var(--do);margin:8px 0 0"></p>
     <div class="hang cach" style="justify-content:flex-end">
@@ -1179,17 +1239,17 @@ async function xemBaoCao(ca_id) {
     <div class="luoi luoi-3" style="margin-bottom:14px">
       ${oSo(b.so_hoc_sinh, "học sinh dự thi")}
       ${oSo(b.diem_trung_binh, "điểm trung bình")}
-      ${oSo(tongSuKien, "sự kiện máy ghi")}
+      ${oSo(tongSuKien, "sự kiện hệ thống ghi nhận")}
     </div>
     <p class="mo">Điểm cao nhất ${b.diem_cao_nhat ?? "—"},
-       thấp nhất ${b.diem_thap_nhat ?? "—"}. Sự kiện máy không phải kết luận.</p>
-    <h3>Sự kiện hệ thống</h3><p>${tongSuKien} sự kiện theo cấu hình ngưỡng.</p>
-    <h3>Sự cố kỹ thuật</h3><p>${b.su_co_ky_thuat.length} trạng thái kỹ thuật.</p>
+       thấp nhất ${b.diem_thap_nhat ?? "—"}. Sự kiện hệ thống ghi nhận chưa phải kết luận.</p>
+    <h3>Sự kiện hệ thống ghi nhận</h3><p>${tongSuKien} sự kiện vượt ngưỡng thời gian đã công bố.</p>
+    <h3>Sự cố kỹ thuật</h3><p>${b.su_co_ky_thuat.length} trường hợp (camera, kết nối...).</p>
     <h3>Hỗ trợ</h3><p>${b.ho_tro.length} yêu cầu hỗ trợ.</p>
-    <h3>Phán đoán giáo viên</h3><p>${b.thay_doi_phan_doan.length} bản ghi vòng hai.</p>
-    <h3>Kết luận của con người</h3><p>${b.ket_luan_con_nguoi.length} phiên bản quyết định.</p>
+    <h3>Phán đoán của thầy cô</h3><p>${b.thay_doi_phan_doan.length} phán đoán vòng 2.</p>
+    <h3>Kết luận của thầy cô</h3><p>${b.ket_luan_con_nguoi.length} lần ghi kết luận.</p>
     <p class="cach-nho"><button class="nut phu nho" onclick="taiFile('/api/admin/xuat/ca-thi/${ca_id}')">
-      Tải dữ liệu thô CSV</button></p>`);
+      Tải dữ liệu chi tiết (CSV)</button></p>`);
 }
 
 // ==================================================== mục 4: dữ liệu nghiên cứu
@@ -1200,7 +1260,7 @@ async function veDuLieu() {
     <div class="the">
       <h2>So sánh hai nhóm</h2>
       <p class="mo">So số dấu hiệu bất thường giữa nhóm có giám sát và nhóm đối
-         chứng, kèm kiểm định t. Đây là bảng đi thẳng vào báo cáo dự án 2.</p>
+         chứng, kèm kiểm định thống kê t. Kết quả dùng làm số liệu cho báo cáo.</p>
       <div class="hang">
         <div class="o"><label>Ca nhóm có giám sát</label>
           <select id="ca-tn" aria-label="Ca nhóm có giám sát">${tn.map(c =>
@@ -1215,7 +1275,7 @@ async function veDuLieu() {
 
     <div class="the">
       <h2>Tải dữ liệu</h2>
-      <p class="mo">File CSV mở được bằng Excel, dùng làm phụ lục báo cáo.</p>
+      <p class="mo">Tệp CSV mở được bằng Excel, dùng làm phụ lục báo cáo.</p>
       <div class="bao">
         <button class="nut phu nho" onclick="taiFile('/api/admin/xuat/cau-hoi')">Nhật ký hỏi bài</button>
         ${ca.map(c => `<button class="nut phu nho"
@@ -1239,7 +1299,7 @@ async function veDuLieu() {
 
     <div class="the">
       <h2>Dọn dữ liệu tập dượt</h2>
-      <div class="canh-bao-o">Xóa bài làm, mốc giám sát và phán đoán của một ca,
+      <div class="canh-bao-o">Xóa bài làm, sự kiện giám sát và phán đoán của một ca,
         giữ lại đề và ca thi. Dùng sau khi chạy thử để dữ liệu tập dượt không lẫn
         vào dữ liệu nghiên cứu thật. Không khôi phục lại được.</div>
       <div class="hang cach-nho">
@@ -1274,7 +1334,7 @@ async function soSanh() {
     o.innerHTML = `
       <div class="cuon-ngang"><table>
         <thead><tr><th>Nhóm</th><th class="giua">Số em</th>
-          <th class="giua">Trung bình số mốc</th><th class="giua">Độ lệch chuẩn</th></tr></thead>
+          <th class="giua">Trung bình số sự kiện</th><th class="giua">Độ lệch chuẩn</th></tr></thead>
         <tbody>
           <tr><td>Có giám sát</td><td class="giua">${kq.nhom_thuc_nghiem.n}</td>
             <td class="giua">${kq.nhom_thuc_nghiem.trung_binh}</td>
@@ -1297,11 +1357,11 @@ async function soSanh() {
 
 async function donDuLieu() {
   const ca_id = document.getElementById("ca-don").value;
-  if (!await xacNhan("Xóa toàn bộ bài làm, mốc giám sát và phán đoán của ca này?",
+  if (!await xacNhan("Xóa toàn bộ bài làm, sự kiện giám sát và phán đoán của ca này?",
                      "Xóa dữ liệu")) return;
   const kq = await API.xoa(`/api/admin/ca-thi/${ca_id}/du-lieu`);
   const d = kq.da_xoa;
-  thongBao(`Đã xóa ${d.bai_lam} bài làm, ${d.moc_bat_thuong} mốc, ` +
+  thongBao(`Đã xóa ${d.bai_lam} bài làm, ${d.moc_bat_thuong} sự kiện, ` +
            `${d.phan_doan} phán đoán`, "xong");
 }
 

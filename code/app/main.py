@@ -25,6 +25,52 @@ app = FastAPI(
 )
 
 
+class _QuaLon(BaseException):
+    """Thân yêu cầu vượt trần. Kế thừa BaseException để FastAPI không đổi nó thành lỗi 400 "đọc thân"."""
+
+
+class GioiHanThan:
+    """ASGI thuần: đếm byte thật của thân yêu cầu.
+
+    Kiểm tra Content-Length khai báo (bên dưới) không chặn được yêu cầu truyền từng phần vì loại
+    này không có tiêu đề đó; đếm ở đây thì chặn được cả hai.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        tran = limits.MAX_UPLOAD_BYTES if scope["path"] in limits.UPLOAD_PATHS else limits.MAX_BODY_BYTES
+        da_nhan, da_tra_loi = 0, False
+
+        async def nhan():
+            nonlocal da_nhan
+            tin = await receive()
+            if tin["type"] == "http.request":
+                da_nhan += len(tin.get("body", b""))
+                if da_nhan > tran:
+                    raise _QuaLon()
+            return tin
+
+        async def gui(tin):
+            nonlocal da_tra_loi
+            if tin["type"] == "http.response.start":
+                da_tra_loi = True
+            await send(tin)
+
+        try:
+            await self.app(scope, nhan, gui)
+        except _QuaLon:
+            if not da_tra_loi:
+                await JSONResponse(status_code=413, content={
+                    "detail": "Yêu cầu quá lớn, vui lòng gửi dữ liệu nhỏ hơn."})(scope, receive, send)
+
+
+app.add_middleware(GioiHanThan)          # thêm trước để nằm sát ứng dụng nhất
+
+
 @app.middleware("http")
 async def bao_ve_duong_truyen(request: Request, call_next):
     """BL-19: reject clear-text non-local deployment traffic when enabled."""
@@ -57,6 +103,25 @@ async def loi_khong_luong_truoc(request: Request, exc: Exception):
         "detail": "Máy chủ gặp lỗi. Em thử lại sau ít phút, nếu vẫn lỗi thì báo thầy cô."})
 
 
+# Tên ô nhập bằng tiếng Việt cho thông báo lỗi dữ liệu; ô nào chưa có tên thì chỉ nói "có một ô".
+TEN_O_NHAP = {
+    "ten": "Tên", "mon": "Môn", "ma": "Mã", "ho_ten": "Họ tên", "lop": "Lớp", "so_phut": "Số phút",
+    "cau_hoi": "Danh sách câu hỏi", "noi_dung": "Nội dung", "phuong_an": "Phương án", "dap_an": "Đáp án",
+    "de_thi": "Đề thi", "ly_do": "Lý do", "can_cu": "Căn cứ", "them_phut": "Số phút thêm", "giay": "Thời điểm",
+    "quy_dinh": "Quy định", "phut_phan_hoi": "Số phút phản hồi", "phut_xu_ly_gv": "Số phút xử lý của giáo viên",
+    "so_ngay_luu_anh": "Số ngày lưu ảnh", "tra_loi": "Câu trả lời", "ghi": "Lựa chọn nhập", "tep": "Tệp",
+    "trang_thai": "Trạng thái", "muc_giam_sat": "Mức giám sát", "lua_chon": "Lựa chọn", "giai_thich": "Giải thích",
+}
+LOI_NHAP = {
+    "missing": "còn thiếu", "string_too_long": "quá dài", "too_long": "có quá nhiều mục",
+    "string_too_short": "đang để trống", "too_short": "đang để trống", "greater_than": "nhỏ hơn mức cho phép",
+    "greater_than_equal": "nhỏ hơn mức cho phép", "less_than": "lớn hơn mức cho phép",
+    "less_than_equal": "lớn hơn mức cho phép", "int_parsing": "phải là một số", "float_parsing": "phải là một số",
+    "int_from_float": "phải là số nguyên", "finite_number": "phải là một số hợp lệ", "value_error": "chưa hợp lệ",
+    "string_pattern_mismatch": "chưa đúng định dạng", "json_invalid": "chưa hợp lệ",
+}
+
+
 @app.exception_handler(RequestValidationError)
 async def loi_du_lieu_gui_len(request: Request, exc: RequestValidationError):
     """Báo trường nào sai bằng tiếng Việt, và không in lại giá trị gửi lên.
@@ -64,12 +129,15 @@ async def loi_du_lieu_gui_len(request: Request, exc: RequestValidationError):
     Bộ xử lý mặc định nhét cả giá trị đầu vào vào phản hồi; với Infinity hoặc NaN
     việc mã hóa JSON thất bại và người dùng nhận lỗi 500 (M5).
     """
-    truong = []
+    van_de = []
     for loi in exc.errors():
-        ten = ".".join(str(p) for p in loi.get("loc", ()) if p != "body")
-        truong.append(f"{ten}: {loi.get('msg', 'không hợp lệ')}" if ten else loi.get("msg", ""))
+        cuoi = [str(p) for p in loi.get("loc", ()) if p != "body" and not str(p).isdigit()]
+        ten = TEN_O_NHAP.get(cuoi[-1], "") if cuoi else ""
+        mo_ta = LOI_NHAP.get(loi.get("type", ""), "chưa hợp lệ")
+        van_de.append(f"{ten} {mo_ta}".strip() if ten else f"có một ô {mo_ta}")
     return JSONResponse(status_code=422, content={
-        "detail": "Dữ liệu gửi lên không hợp lệ (" + "; ".join(truong)[:300] + ")"})
+        "detail": "Chưa lưu được vì " + "; ".join(dict.fromkeys(van_de))[:300] +
+                  ". Kiểm tra lại các ô đã nhập rồi thử lại."})
 
 
 @app.on_event("startup")

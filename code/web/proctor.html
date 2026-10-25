@@ -35,7 +35,7 @@
 <script>
 const nd = chiGiaoVien();
 datHeThong(2);
-dungKhung("Coi thi và xem lại", "Hệ thống 2: giám sát kỳ thi");
+dungKhung("Coi thi và xem lại", "Giám sát kỳ thi");
 if (!nd) throw new Error("dung lai");
 
 let caThi = null, dsHocSinh = [], tongHop = [], mucCa = "day_du";
@@ -44,7 +44,7 @@ const oNoiDung = document.getElementById("noi-dung");
 
 const TT_CA = { nhap: "Chưa mở", mo: "Đang mở", dong: "Đã đóng" };
 const GOI_Y_CA = {
-  nhap: "Ca còn là bản nháp. Mở ca ở mục Quản lý nội dung → Ca thi để học sinh vào làm bài.",
+  nhap: "Ca còn là bản nháp. Thầy cô mở ca ở mục Quản lý, tab Ca thi, để học sinh vào làm bài.",
   mo: "Ca đang mở. Theo dõi học sinh bên dưới; nộp phán đoán vòng 1 khi các em đã nộp bài.",
   dong: "Ca đã đóng. Thầy cô có thể làm phán đoán, xem phản hồi và ghi kết luận.",
 };
@@ -68,6 +68,7 @@ napDanhSachCa().then(ds => {
   const muon = new URLSearchParams(location.search).get("ca");
   if (muon && ds.some(c => String(c.id) === muon)) {          // đi từ trang Quản lý nội dung
     document.getElementById("ca").value = muon;
+    capNhatTrangThaiCa();                         // gợi ý theo đúng ca vừa chọn, không phải ca đầu danh sách
     document.getElementById("nut-mo").click();
   }
 }).catch(e => thongBao(e.message, "loi"));
@@ -90,7 +91,7 @@ function veCaChuaMo(c) {
       </ol>
       <div class="hang cach">
         <button id="nut-mo-ca" ${rong ? "disabled" : ""}>Mở ca ngay</button>
-        <a class="nut phu" href="/quan-tri">Cấp mã dự thi ở Quản lý nội dung</a>
+        <a class="nut phu" href="/quan-tri">Cấp mã dự thi ở mục Quản lý</a>
       </div>
       ${rong ? '<p class="mo-nho" style="color:var(--do-sau)">Đề này chưa có câu hỏi nên chưa mở được ca. Soạn đề có ít nhất một câu rồi tạo ca mới.</p>' : ""}
     </div>`;
@@ -130,7 +131,7 @@ function veTongQuan() {
       <div class="bieu-tuong">${icon(ic)}</div>
       <div><b class="so">${so}</b><span class="nhan-so">${nhan}</span>${phu ? `<span class="phu-so">${phu}</span>` : ""}</div></div>`;
   const theHoTro = the("ho_tro", soHoTroMoi ? "do nhap-nhay" : "luc", soHoTroMoi, "Hỗ trợ đang chờ",
-    soHoTroMoi ? "Cần thầy cô xử lí" : "Không có yêu cầu mới");
+    soHoTroMoi ? "Cần thầy cô xử lý" : "Không có yêu cầu mới");
   box.innerHTML = `<div class="dai-the-so" id="dai-the-so">
       ${the("nguoi", "xanh", s.length, "Học sinh")}
       ${the("dong_ho", "vang", dang, "Đang làm")}
@@ -227,6 +228,19 @@ async function napDieuKhien() {
     veTongQuan();
     dangLam = states.filter(x => x.da_bat_dau && !x.da_nop && x.trang_thai_ca === "mo").map(x => x.hoc_sinh);
     const dong = states.length && states[0].trang_thai_ca !== "mo";
+    // Nút bị vô hiệu thì nói rõ vì sao, không để giáo viên phải đoán.
+    const lyDoKhong = (x, act) => {
+      if (x.trang_thai_ca !== "mo") return "Ca không còn mở";
+      if (x.da_nop) return "Em đã nộp bài";
+      if (act !== "tiep_tuc" && !x.da_bat_dau) return "Em chưa bắt đầu làm bài";
+      if (act === "tam_dung" && x.tam_dung) return "Bài đang tạm dừng rồi";
+      if (act === "tiep_tuc" && !x.tam_dung) return "Bài không đang tạm dừng";
+      return "";
+    };
+    const nutDieuChinh = (x, act, chu) => {
+      const ly = lyDoKhong(x, act);
+      return `<button class="phu nho" data-act="${act}" data-hs="${thoat(x.hoc_sinh)}" ${ly ? `disabled title="${thoat(ly)}"` : ""}>${chu}</button>`;
+    };
     const hang = x => {
       const t = trangThaiHS(x);
       const song = !x.da_nop && x.trang_thai_ca === "mo";
@@ -237,9 +251,9 @@ async function napDieuKhien() {
         <td><span class="nhan ${t.mau}">${t.nhan}</span></td>
         <td class="mo-nho">${x.da_bat_dau && !x.da_nop ? dinhDangGiay(x.con_lai_giay ?? 0) : "—"}${x.them_giay ? ` (+${Math.round(x.them_giay / 60 * 10) / 10} phút)` : ""}</td>
         <td class="phai">
-          <button class="phu nho" data-act="tam_dung" data-hs="${thoat(x.hoc_sinh)}" ${song && x.da_bat_dau && !x.tam_dung ? "" : "disabled"}>Tạm dừng</button>
-          <button class="phu nho" data-act="tiep_tuc" data-hs="${thoat(x.hoc_sinh)}" ${song && x.tam_dung ? "" : "disabled"}>Tiếp tục</button>
-          <button class="phu nho" data-act="them_gio" data-hs="${thoat(x.hoc_sinh)}" ${song && x.da_bat_dau ? "" : "disabled"}>Thêm giờ</button>
+          ${nutDieuChinh(x, "tam_dung", "Tạm dừng")}
+          ${nutDieuChinh(x, "tiep_tuc", "Tiếp tục")}
+          ${nutDieuChinh(x, "them_gio", "Thêm giờ")}
         </td></tr>`;
     };
     box.innerHTML = `<div class="the"><div class="gon-gang"><h2 style="margin:0">Theo dõi bài đang làm</h2>
@@ -293,8 +307,8 @@ function hopDieuChinh(hanhDong, hocSinh) {
 
 function oChonMuc(ma, ham, gt = 0, khoa = false) {
   return `<select aria-label="Mức nghi ngờ của ${ma}" ${khoa ? "disabled" : ""} onchange="${ham}('${ma}', this.value)">` +
-    [0, 1, 2, 3].map(v =>
-      `<option value="${v}" ${v === gt ? "selected" : ""}>${v}</option>`).join("") +
+    [[0, "0 · Không"], [1, "1 · Nhẹ"], [2, "2 · Rõ"], [3, "3 · Rất rõ"]].map(([v, nhan]) =>
+      `<option value="${v}" ${v === gt ? "selected" : ""}>${nhan}</option>`).join("") +
     "</select>";
 }
 
@@ -311,9 +325,9 @@ function veVong1(ds = dsHocSinh) {
         của các em khác được giữ nguyên và không sửa được. Dữ liệu hệ thống vẫn khóa cho đến khi đủ.</div>` : ""}
       <div class="canh-bao-o">
         Thầy cô ghi phán đoán dựa trên quan sát của mình trong buổi thi.
-        <b>Chưa được xem dữ liệu hệ thống ở bước này.</b> Máy chủ chỉ mở phần
-        dữ liệu sau khi thầy cô nộp vòng 1, đây là ràng buộc của thiết kế
-        nghiên cứu chứ không phải quy ước suông.
+        <b>Chưa được xem dữ liệu hệ thống ở bước này.</b> Hệ thống chỉ cho xem
+        dữ liệu sau khi thầy cô nộp vòng 1. Đây là yêu cầu của thiết kế
+        nghiên cứu, không bỏ qua được.
       </div>
       <p class="mo cach-nho">Thang mức nghi ngờ: <b>0</b> không có dấu hiệu,
         <b>1</b> dấu hiệu nhẹ, <b>2</b> dấu hiệu rõ, <b>3</b> dấu hiệu rất rõ.</p>
@@ -341,6 +355,7 @@ function capNhatCongVong1() {
   const nut = document.getElementById("nut-nop-v1"), ban = document.getElementById("v1-cho");
   if (!nut || !ban) return;
   nut.disabled = dangLam.length > 0;
+  nut.title = dangLam.length ? `Còn ${dangLam.length} học sinh đang làm bài` : "";
   ban.classList.toggle("an", dangLam.length === 0);
   if (dangLam.length) {
     ban.innerHTML = `<b>Còn ${dangLam.length} học sinh đang làm bài</b> (${dangLam.slice(0, 6).map(thoat).join(", ")}).
@@ -379,7 +394,7 @@ function veVong2(khoa = false) {
   oNoiDung.innerHTML = `
     <div class="the">
       <h2>Vòng 2. Đánh giá lại sau khi xem bằng chứng</h2>
-      <p class="mo">Mỗi dòng hiện số mốc hệ thống ghi nhận. Bấm vào một mốc để
+      <p class="mo">Mỗi dòng hiện số sự kiện hệ thống ghi nhận. Bấm vào một sự kiện để
          xem ảnh chụp tại đúng thời điểm đó. Nếu thầy cô đổi ý so với vòng 1,
          ghi rõ bằng chứng nào làm thầy cô đổi ý.</p>
       <div class="cuon-ngang">
@@ -397,7 +412,7 @@ function veVong2(khoa = false) {
               >${dinhDangGiay(m.giay)}</button>`).join("");
           return `<tr>
             <td><b>${thoat(h)}</b>
-              <div class="mo-nho">${o.tong} sự kiện máy ghi — không phải kết luận</div></td>
+              <div class="mo-nho">${o.tong} sự kiện hệ thống ghi nhận, chưa phải kết luận</div></td>
             <td><div class="bao">${nhan || '<span class="mo-nho">Không có</span>'}</div>
                 <div>${moc}${nutLuoiAnh(h, o)}</div></td>
             <td class="giua">${mucV1[h] ?? "—"}</td>
@@ -423,7 +438,7 @@ function veVong2(khoa = false) {
 
 function nutLuoiAnh(h, o) {
   return o.moc.length
-    ? `<div><button class="phu nho" style="margin-top:6px" onclick="xemLuoiAnh(${thoatJs(h)})">Xem ảnh dạng lưới (${o.moc.length})</button></div>`
+    ? `<div><button class="phu nho" style="margin-top:6px" onclick="xemLuoiAnh(${thoatJs(h)})">Xem tất cả ảnh (${o.moc.length})</button></div>`
     : "";
 }
 
@@ -464,7 +479,7 @@ window.xemAnh = async (id, ten, giay) => {
       ? `<div id="khung-anh-bang-chung"></div>
          <p class="mo-nho cach-nho">Ảnh để ở độ phân giải thấp, đủ nhận ra tình
             huống nhưng không lưu hình ảnh rõ nét của học sinh.</p>`
-      : '<p class="mo">Không có ảnh cho mốc này: mốc không kèm ảnh (ví dụ chuyển cửa sổ) hoặc ảnh đã quá số ngày lưu. Thông tin của mốc vẫn còn.</p>');
+      : '<p class="mo">Không có ảnh cho sự kiện này: sự kiện không kèm ảnh (ví dụ chuyển cửa sổ) hoặc ảnh đã quá số ngày lưu. Thông tin của sự kiện vẫn còn.</p>');
     if (anh) document.getElementById("khung-anh-bang-chung").appendChild(anh);
   } catch (e) { thongBao(e.message, "loi"); }
 };
@@ -510,7 +525,7 @@ function veMotVong(khoa = false) {
           const oData = coData ? `<td>
               <div class="bao">${nhan || '<span class="mo-nho">Không có</span>'}</div>
               <div>${moc}${nutLuoiAnh(h, o)}</div></td>` : "";
-          const soPct = coData ? `<div class="mo-nho">${o.tong} sự kiện máy ghi — không phải kết luận</div>` : "";
+          const soPct = coData ? `<div class="mo-nho">${o.tong} sự kiện hệ thống ghi nhận, chưa phải kết luận</div>` : "";
           return `<tr>
             <td><b>${thoat(h)}</b>${soPct}</td>${oData}
             <td class="giua">${oChonMuc(h, "datMucV2", mucV2[h], khoa)}</td>
@@ -594,7 +609,7 @@ async function napPhanTich() {
       <p class="mo-nho cach-nho">Cỡ mẫu ${t.so_hoc_sinh} học sinh. Khi viết báo cáo
          cần nêu rõ hạn chế về cỡ mẫu thay vì kết luận quá mức.</p>
       <p class="cach-nho"><button class="nut phu nho"
-         onclick="taiFile('/api/admin/xuat/ca-thi/${caThi}')">Tải dữ liệu thô CSV</button></p>`;
+         onclick="taiFile('/api/admin/xuat/ca-thi/${caThi}')">Tải dữ liệu chi tiết (CSV)</button></p>`;
   } catch (e) {
     o.innerHTML = `<div class="canh-bao-o">${thoat(e.message)}</div>`;
   }
@@ -623,7 +638,7 @@ async function napHoTro() {
       <div class="gon-gang"><h2 style="margin:0;display:flex;align-items:center;gap:10px">
           <span class="bieu-tuong">${icon("ho_tro")}</span>Yêu cầu hỗ trợ trong buổi thi</h2>
         <span class="nhan ${soMoi ? "do nhap-nhay" : "luc"}" id="huy-hieu-ho-tro">${soMoi} mới</span></div>
-      <p class="mo-nho">Cảnh báo của hệ thống không tự động trừ điểm. Thầy cô xử lí,
+      <p class="mo-nho">Cảnh báo của hệ thống không tự động trừ điểm. Thầy cô xử lý,
         ghi thời gian gián đoạn và căn cứ cho mỗi quyết định.</p>
       ${ds.length ? `<div class="cuon-ngang"><table><thead><tr>
         <th>Học sinh</th><th>Phòng</th><th>Loại</th><th>Nội dung</th>
@@ -636,7 +651,7 @@ async function napHoTro() {
 
 function hangHoTro(y) {
   const mau = { moi: "do", dang_xu_ly: "cam", xong: "luc" }[y.trang_thai] || "xam";
-  const tenTT = { moi: "Mới", dang_xu_ly: "Đang xử lí", xong: "Xong" }[y.trang_thai];
+  const tenTT = { moi: "Mới", dang_xu_ly: "Đang xử lý", xong: "Xong" }[y.trang_thai];
   const xong = y.trang_thai === "xong";
   const gv = y.phan_hoi_gv ? `<div class="mo-nho">Xử lí: ${thoat(y.phan_hoi_gv)}` +
     (y.giay_gian_doan ? ` (gián đoạn ${Math.round(y.giay_gian_doan)}s)` : "") + "</div>" : "";
@@ -655,7 +670,7 @@ window.xuLyHoTro = (id) => {
   const phu = tao("div", "lop-phu");
   const the = tao("div", "the");
   the.innerHTML = `<h2>Xử lí yêu cầu hỗ trợ</h2>
-    <div class="o"><label>Cách xử lí / phản hồi cho học sinh</label>
+    <div class="o"><label>Cách xử lý / phản hồi cho học sinh</label>
       <textarea id="x-ph" rows="2" aria-label="Cách xử lý yêu cầu hỗ trợ" placeholder="Ví dụ: đã đến hỗ trợ, cộng thêm 2 phút."></textarea></div>
     <div class="o cach-nho"><label>Thời gian gián đoạn (giây)</label>
       <input id="x-gd" type="number" min="0" aria-label="Thời gian gián đoạn tính bằng giây" placeholder="ví dụ 120"></div>
@@ -671,7 +686,7 @@ window.xuLyHoTro = (id) => {
     try {
       await API.post(`/api/tuong-tac/ho-tro/${id}/xu-ly`,
         { trang_thai: "xong", phan_hoi_gv: ph, giay_gian_doan: gd ? Number(gd) : null });
-      thongBao("Đã ghi cách xử lí", "xong");
+      thongBao("Đã ghi cách xử lý", "xong");
       phu.remove(); napHoTro();
     } catch (e) { thongBao(e.message, "loi"); }
   };
@@ -692,8 +707,8 @@ async function napPhanHoiHS() {
     const hanGiaoVien = hs => hs.da_co_ket_luan
       ? `<span class="nhan luc">Đã có kết luận</span>`
       : hs.xu_ly_gv_qua_han
-        ? `<span class="nhan do">Quá hạn giáo viên ${Math.ceil(Math.abs(hs.phut_xu_ly_gv_con_lai))} phút</span>`
-        : `<span class="nhan cam">Giáo viên còn ${Math.max(0, Math.ceil(hs.phut_xu_ly_gv_con_lai))} phút</span>`;
+        ? `<span class="nhan do">Quá hạn xử lý ${dinhDangPhut(Math.abs(hs.phut_xu_ly_gv_con_lai))}</span>`
+        : `<span class="nhan cam">Còn ${dinhDangPhut(Math.max(0, hs.phut_xu_ly_gv_con_lai))} để xử lý</span>`;
     box.innerHTML = `<div class="the"><h2>Phản hồi của học sinh sau buổi thi</h2>
       <p class="mo">Đối chiếu trước khi kết luận. Lựa chọn của học sinh là phản hồi với
         mô tả sự kiện, không phải tự nhận hay tự bác bỏ vi phạm. Hạn giáo viên xử lý
@@ -719,20 +734,39 @@ async function napPhanHoiHS() {
   } catch (e) { box.innerHTML = ""; }
 }
 
-window.giaHanPhanHoi = async student => {
-  const minutes = Number(prompt("Số phút gia hạn:", "30"));
-  const reason = prompt("Lý do gia hạn:")?.trim();
-  if (!(minutes > 0) || !reason) { thongBao("Cần số phút dương và lý do", "loi"); return; }
-  try {
-    await API.post(`/api/tuong-tac/sau-thi/ca/${caThi}/gia-han/${encodeURIComponent(student)}`,
-      { them_phut: minutes, ly_do: reason });
-    thongBao("Đã gia hạn phản hồi", "xong"); napPhanHoiHS();
-  } catch (e) { thongBao(e.message, "loi"); }
+window.giaHanPhanHoi = student => {
+  const phu = tao("div", "lop-phu"), the = tao("div", "the");
+  the.setAttribute("role", "dialog"); the.setAttribute("aria-modal", "true");
+  the.innerHTML = `<h2>Gia hạn thời gian phản hồi cho ${thoat(student)}</h2>
+    <p class="mo">Em được thêm thời gian để xem lại và phản hồi sau khi nộp bài. Mỗi em được gia hạn tối đa 180 phút.</p>
+    <div class="o"><label for="gh-phut">Số phút thêm</label><input id="gh-phut" type="number" min="1" max="180" value="30"></div>
+    <div class="o cach-nho"><label for="gh-ly-do">Lý do (bắt buộc, được lưu vào nhật ký)</label>
+      <input id="gh-ly-do" placeholder="Ví dụ: em bị mất mạng khi đang phản hồi"></div>
+    <p id="gh-loi" class="mo" style="color:var(--do);margin:8px 0 0"></p>
+    <div class="hang cach" style="justify-content:flex-end">
+      <button class="phu" id="gh-huy">Hủy</button><button id="gh-ok">Gia hạn</button></div>`;
+  phu.appendChild(the);
+  phu.onclick = e => { if (e.target === phu) phu.remove(); };
+  document.body.appendChild(phu);
+  the.querySelector("#gh-ly-do").focus();
+  the.querySelector("#gh-huy").onclick = () => phu.remove();
+  the.querySelector("#gh-ok").onclick = async () => {
+    const phut = Number(the.querySelector("#gh-phut").value), lyDo = the.querySelector("#gh-ly-do").value.trim();
+    const loi = the.querySelector("#gh-loi");
+    if (!(phut > 0)) { loi.textContent = "Số phút phải lớn hơn 0."; return; }
+    if (!lyDo) { loi.textContent = "Cần ghi lý do gia hạn."; return; }
+    the.querySelector("#gh-ok").disabled = true;
+    try {
+      await API.post(`/api/tuong-tac/sau-thi/ca/${caThi}/gia-han/${encodeURIComponent(student)}`,
+        { them_phut: phut, ly_do: lyDo });
+      phu.remove(); thongBao("Đã gia hạn phản hồi", "xong"); napPhanHoiHS();
+    } catch (e) { loi.textContent = e.message; the.querySelector("#gh-ok").disabled = false; }
+  };
 };
 
 function napBangHoSo() {
   const box = document.getElementById("ho-so-box");
-  box.innerHTML = `<div class="the"><h2>Hồ sơ và kết luận của con người</h2>
+  box.innerHTML = `<div class="the"><h2>Hồ sơ và kết luận của thầy cô</h2>
     <div class="hang"><select id="hs-ho-so" aria-label="Chọn học sinh để xem hồ sơ">${dsHocSinh.map(h =>
       `<option value="${thoat(h)}">${thoat(h)}</option>`).join("")}</select>
       <button id="mo-ho-so">Mở hồ sơ</button></div><div id="chi-tiet-ho-so"></div></div>`;
@@ -749,7 +783,7 @@ function veLienKetHoTro(item) {
     const o = item.su_kien_he_thong.length ? item.su_kien_he_thong.map(m =>
       `<label class="mo-nho" style="margin-right:12px"><input type="checkbox" data-yeu-cau="${y.id}"
         value="${m.id}" ${da.has(m.id) ? "checked" : ""}> ${thoat(TEN_MOC[m.loai] || m.loai)} (${dinhDangGiay(m.giay)})</label>`
-    ).join("") : '<span class="mo-nho">Không có sự kiện máy ghi.</span>';
+    ).join("") : '<span class="mo-nho">Hệ thống không ghi sự kiện nào.</span>';
     return `<div class="canh-bao-o cach-nho"><b>${thoat(TEN_LOAI_HT[y.loai] || y.loai)}</b>:
       ${thoat(y.noi_dung || "")}<div>${o}</div>
       ${item.su_kien_he_thong.length ? `<button class="phu nho" data-lien-ket="${y.id}">Lưu liên kết</button>` : ""}</div>`;
@@ -762,7 +796,7 @@ async function moHoSo() {
   try {
     const item = await API.get(`/api/cases/ca/${caThi}/hoc-sinh/${encodeURIComponent(student)}`);
     const latest = item.ket_luan_con_nguoi.at(-1);
-    target.innerHTML = `<hr><p><b>Sự kiện máy ghi:</b> ${item.su_kien_he_thong.length}
+    target.innerHTML = `<hr><p><b>Sự kiện hệ thống ghi:</b> ${item.su_kien_he_thong.length}
       (không phải kết luận) · <b>Sự cố kỹ thuật:</b> ${item.su_co_ky_thuat.length}
       · <b>Hỗ trợ:</b> ${item.ho_tro.length} · <b>Phản hồi:</b> ${item.phan_hoi_hoc_sinh.length}</p>
       <p><b>Phán đoán giáo viên:</b> ${item.phan_doan_giao_vien.map(x =>

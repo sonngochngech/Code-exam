@@ -35,35 +35,53 @@ router = APIRouter(prefix="/api/admin", tags=["quan tri"],
 # Học liệu
 # ---------------------------------------------------------------------------
 @router.post("/hoc-lieu/nap")
-async def nap_hoc_lieu(mon: str = Form(...), tep: UploadFile = File(...)):
+async def nap_hoc_lieu(mon: str = Form(...), tep: UploadFile = File(...),
+                       user: dict = Depends(chi_giao_vien)):
     """Nhận file đề cương từ trình duyệt rồi cắt đoạn, gắn nhãn và lưu."""
+    mon = mon.strip()
+    if not mon or len(mon) > 100:
+        raise HTTPException(400, "Môn không hợp lệ: cần có tên môn, tối đa 100 ký tự")
     # Làm sạch tên file: chỉ giữ phần tên, bỏ mọi thành phần đường dẫn để tránh
     # vượt thư mục (ví dụ tên "../../x" ghi ra ngoài thư mục học liệu).
     ten_an_toan = os.path.basename((tep.filename or "").replace("\\", "/"))
     if not ten_an_toan or ten_an_toan in (".", ".."):
-        raise HTTPException(400, "Tên file không hợp lệ")
+        raise HTTPException(400, "Tên tệp không hợp lệ. Thầy cô đổi tên tệp rồi tải lại.")
 
     duoi = ten_an_toan.lower().rsplit(".", 1)[-1]
     if duoi not in ("docx", "txt", "md"):
-        raise HTTPException(400, "Chỉ nhận file .docx, .txt hoặc .md")
+        raise HTTPException(400, "Chỉ nhận tệp Word (.docx), văn bản (.txt) hoặc Markdown (.md).")
+
+    with db.ket_noi() as conn:                  # nạp lại cùng tệp sẽ nhân đôi mọi đoạn, nên chặn trước khi ghi
+        da_nap = conn.execute("SELECT COUNT(*) c FROM hoc_lieu WHERE nguon = ? AND mon = ?",
+                              (ten_an_toan, mon)).fetchone()["c"]
+    if da_nap:
+        raise HTTPException(409, f"Tệp {ten_an_toan} đã được nạp cho môn {mon} ({da_nap} đoạn). "
+                                 "Thầy cô gõ tên tệp vào ô tìm kiếm, chọn tất cả các đoạn tìm thấy rồi bấm Xóa, "
+                                 "sau đó nạp lại. Nếu đây là bản khác thì đổi tên tệp.")
 
     config.THU_MUC_HOC_LIEU.mkdir(parents=True, exist_ok=True)
     thu_muc = config.THU_MUC_HOC_LIEU.resolve()
     dich = (thu_muc / ten_an_toan).resolve()
     # Chốt chặn thứ hai: đích phải nằm trong thư mục học liệu.
     if thu_muc not in dich.parents:
-        raise HTTPException(400, "Tên file không hợp lệ")
+        raise HTTPException(400, "Tên tệp không hợp lệ. Thầy cô đổi tên tệp rồi tải lại.")
     with dich.open("wb") as f:
         shutil.copyfileobj(tep.file, f)
 
     try:
         so_doan = rag.nap_hoc_lieu(dich, mon)
+    except rag.LoiDinhDang as e:
+        dich.unlink(missing_ok=True)
+        raise HTTPException(400, str(e))
     except Exception:
         logging.getLogger("app").exception("Không đọc được học liệu %s", ten_an_toan)
         dich.unlink(missing_ok=True)
-        raise HTTPException(400, "Không đọc được file. Thầy cô kiểm tra lại định dạng "
+        raise HTTPException(400, "Không đọc được tệp. Thầy cô kiểm tra lại định dạng "
                                  "và nội dung rồi thử lại.")
 
+    with db.ket_noi() as conn:
+        audit.log(conn, user["ma"], "nap_hoc_lieu", "hoc_lieu", ten_an_toan,
+                  after={"tep": ten_an_toan, "mon": mon, "so_doan": so_doan})
     return {"tep": ten_an_toan, "mon": mon, "so_doan": so_doan}
 
 
@@ -93,7 +111,7 @@ def danh_sach_doan(mon: str | None = Query(None, max_length=100),
                 "SELECT id, mon, chuong, bai, dang_bai, nguon, noi_dung"
                 f" FROM hoc_lieu{dk} ORDER BY id", tham_so)
                 if tu_khoa in " ".join(str(d[k] or "") for k in (
-                    "chuong", "bai", "dang_bai", "noi_dung")).casefold()]
+                    "chuong", "bai", "dang_bai", "noi_dung", "nguon")).casefold()]
             tong = len(khop)
             trang_nay = khop[(trang - 1) * moi_trang: trang * moi_trang]
             dong = [{**{k: d[k] for k in ("id", "mon", "chuong", "bai", "dang_bai", "nguon")},
@@ -165,7 +183,7 @@ def sua_nhieu_doan(body: SuaNhieuDoan, user: dict = Depends(chi_giao_vien)):
     """Đổi chương, bài hoặc dạng bài cho nhiều đoạn cùng lúc. Chỉ trường được gửi mới đổi."""
     dat = {k: getattr(body, k) for k in ("chuong", "bai", "dang_bai") if getattr(body, k) is not None}
     if not dat:
-        raise HTTPException(400, "Không có gì để sửa")
+        raise HTTPException(400, "Thầy cô chưa nhập nhãn nào để sửa.")
     ids = sorted(set(body.ids))
     with db.ket_noi() as conn:
         cur = conn.execute(
@@ -185,7 +203,7 @@ def sua_nhan(doan_id: int, s: SuaNhan):
             dat.append(f"{ten} = ?")
             tham_so.append(gt)
     if not dat:
-        raise HTTPException(400, "Không có gì để sửa")
+        raise HTTPException(400, "Thầy cô chưa nhập nhãn nào để sửa.")
     with db.ket_noi() as conn:
         conn.execute(f"UPDATE hoc_lieu SET {', '.join(dat)} WHERE id = ?",
                      tham_so + [doan_id])
@@ -352,9 +370,9 @@ def _doc_bang(ten_tep: str, noi_dung: bytes) -> list[list[str]]:
     """Đọc tệp CSV hoặc xlsx thành các dòng chữ. Mọi lỗi đọc đều thành một thông báo chung."""
     duoi = ten_tep.lower().rsplit(".", 1)[-1] if "." in ten_tep else ""
     if duoi not in ("csv", "xlsx"):
-        raise HTTPException(400, "Chỉ nhận tệp .csv hoặc .xlsx")
+        raise HTTPException(400, "Chỉ nhận tệp Excel (.xlsx) hoặc CSV (.csv).")
     if not noi_dung.strip():
-        raise HTTPException(400, "Tệp trống")
+        raise HTTPException(400, "Tệp trống. Thầy cô chọn tệp có dữ liệu.")
     try:
         if duoi == "csv":
             van_ban = noi_dung.decode("utf-8-sig")
@@ -384,12 +402,13 @@ async def nhap_hoc_sinh(tep: UploadFile = File(...), ghi: str = Form("0"),
     """Nhập danh sách học sinh. ghi=0: chỉ kiểm tra và báo lỗi từng dòng; ghi=1: thêm các dòng hợp lệ."""
     bang = _doc_bang(tep.filename or "", await tep.read())
     if not bang or not any(bang[0]):
-        raise HTTPException(400, "Tệp không có dòng tiêu đề")
+        raise HTTPException(400, "Tệp thiếu dòng tiêu đề. Dòng đầu cần có các cột Mã, Họ tên và (không bắt buộc) Lớp.")
     cot = {TEN_COT[k]: i for i, o in enumerate(bang[0]) if (k := _chuan_hoa_tieu_de(o)) in TEN_COT}
     thieu = [c for c in ("ma", "ho_ten") if c not in cot]
     if thieu:
-        raise HTTPException(400, "Thiếu cột bắt buộc: " + ", ".join(thieu) +
-                            ". Dòng đầu cần có các cột ma, ho_ten và (không bắt buộc) lop.")
+        ten_cot = {"ma": "Mã", "ho_ten": "Họ tên"}
+        raise HTTPException(400, "Thiếu cột bắt buộc: " + ", ".join(ten_cot[c] for c in thieu) +
+                            ". Dòng đầu của tệp cần có các cột Mã, Họ tên và (không bắt buộc) Lớp.")
     dong_du_lieu = [(so_dong, d) for so_dong, d in enumerate(bang[1:], start=2) if any(d)]
     if len(dong_du_lieu) > TOI_DA_DONG_NHAP:
         raise HTTPException(400, f"Tệp có quá {TOI_DA_DONG_NHAP} dòng. Thầy cô chia nhỏ rồi nhập từng phần.")

@@ -60,9 +60,9 @@ def latest(connection, session_id: int) -> dict:
 def create_version(session_id: int, actor: str, values: dict) -> dict:
     clean = {key: float(values.get(key, DEFAULTS[key])) for key in DEFAULTS}
     if not all(math.isfinite(value) for value in clean.values()):
-        raise HTTPException(400, "Ngưỡng phải là số hữu hạn")
+        raise HTTPException(400, "Ngưỡng phải là một số hợp lệ.")
     if any(value < 0 for value in clean.values()):
-        raise HTTPException(400, "Ngưỡng không được âm")
+        raise HTTPException(400, "Ngưỡng không được là số âm.")
     if any(clean[key] > MAX_SECONDS for key in clean if key != "nguong_goc_nhin") \
             or clean["nguong_goc_nhin"] > MAX_ANGLE:
         raise HTTPException(
@@ -72,7 +72,7 @@ def create_version(session_id: int, actor: str, values: dict) -> dict:
             "SELECT 1 FROM bai_lam WHERE ca_thi=? LIMIT 1", (session_id,)
         ).fetchone()
         if has_attempts:
-            raise HTTPException(409, "Không thể đổi ngưỡng sau khi đã có bài làm")
+            raise HTTPException(409, "Đã có học sinh nộp bài nên không đổi ngưỡng được nữa.")
         current = latest(connection, session_id)
         version = current["phien_ban"] + 1
         connection.execute(

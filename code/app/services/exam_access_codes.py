@@ -34,7 +34,7 @@ def reissue_for_student(session_id: int, teacher: str, student: str) -> dict:
         if not session:
             raise HTTPException(404, "Không tìm thấy ca thi")
         if session["trang_thai"] == "dong":
-            raise HTTPException(409, "Ca thi đã đóng; không thể cấp mã mới")
+            raise HTTPException(409, "Ca đã đóng nên không cấp được mã mới.")
         if not connection.execute(
                 "SELECT 1 FROM ca_thi_nguoi_dung WHERE ca_thi=? AND nguoi_dung=?"
                 " AND vai_tro_trong_ca='hoc_sinh'", (session_id, student)).fetchone():
@@ -64,7 +64,7 @@ def generate_for_session(session_id: int, teacher: str) -> list[dict]:
         if not session:
             raise HTTPException(404, "Không tìm thấy ca thi")
         if session["trang_thai"] == "dong":
-            raise HTTPException(409, "Ca thi đã đóng; không thể sinh mã mới")
+            raise HTTPException(409, "Ca đã đóng nên không cấp được mã mới.")
         students = connection.execute(
             "SELECT p.nguoi_dung, n.ho_ten, n.lop FROM ca_thi_nguoi_dung p"
             " JOIN nguoi_dung n ON n.ma=p.nguoi_dung"
@@ -72,7 +72,7 @@ def generate_for_session(session_id: int, teacher: str) -> list[dict]:
             (session_id,),
         ).fetchall()
         if not students:
-            raise HTTPException(400, "Ca thi chưa được phân công học sinh")
+            raise HTTPException(400, "Ca thi chưa có học sinh. Thầy cô thêm học sinh ở bước Phân công trước.")
 
         connection.execute(
             "UPDATE ma_du_thi SET dang_hoat_dong=0 WHERE ca_thi=?", (session_id,)

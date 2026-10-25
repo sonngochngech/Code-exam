@@ -56,7 +56,7 @@ def nguoi_dung_hien_tai(authorization: str | None = Header(default=None)) -> dic
     token = _doc_token(authorization)
     nd = _PHIEN.get(token) if token else None
     if not nd:
-        raise HTTPException(401, "Cần đăng nhập để dùng chức năng này.")
+        raise HTTPException(401, "Phiên đăng nhập đã hết hạn hoặc chưa đăng nhập. Vui lòng đăng nhập lại.")
     return nd
 
 

@@ -12,7 +12,7 @@ def require_open(connection, session_id: int):
     if not row:
         raise HTTPException(404, "Không tìm thấy ca thi")
     if row["trang_thai"] != "mo":
-        raise HTTPException(409, "Ca thi chưa mở hoặc đã đóng")
+        raise HTTPException(409, "Ca thi chưa mở hoặc đã đóng.")
     return row
 
 
@@ -31,9 +31,9 @@ def update_draft(session_id: int, name: str, classroom: str | None,
             "SELECT 1 FROM bai_lam WHERE ca_thi=? LIMIT 1", (session_id,),
         ).fetchone()
         if attempts:
-            raise HTTPException(409, "Không thể sửa cấu hình ca sau khi đã có bài làm")
+            raise HTTPException(409, "Đã có học sinh nộp bài nên không sửa được cấu hình ca nữa.")
         if session["trang_thai"] != "nhap":
-            raise HTTPException(409, "Chỉ ca ở trạng thái nháp mới được sửa")
+            raise HTTPException(409, "Ca đã mở nên không sửa được nữa; chỉ sửa được khi ca còn là bản nháp.")
         connection.execute(
             "UPDATE ca_thi SET ten=?,lop=?,quy_dinh=?,muc_giam_sat=?,"
             " phut_phan_hoi=?,phut_xu_ly_gv=?,cho_phep_gia_han=?,so_ngay_luu_anh=?,"
@@ -53,11 +53,11 @@ def transition(session_id: int, target: str) -> dict:
         if not session:
             raise HTTPException(404, "Không tìm thấy ca thi")
         if (session["trang_thai"], target) not in allowed:
-            raise HTTPException(409, "Chuyển trạng thái ca thi không hợp lệ")
+            raise HTTPException(409, "Ca này đã ở trạng thái đó, có thể thầy cô khác vừa đổi. Thầy cô tải lại danh sách ca để xem trạng thái mới.")
         if target == "mo" and not connection.execute(
                 "SELECT 1 FROM cau_trac_nghiem WHERE de_thi=? LIMIT 1",
                 (session["de_thi"],)).fetchone():                       # M9a
-            raise HTTPException(409, "Đề thi chưa có câu hỏi nào nên chưa mở ca được")
+            raise HTTPException(409, "Đề thi chưa có câu hỏi nên chưa mở ca được. Thầy cô soạn đề có ít nhất một câu rồi tạo ca mới.")
         if target == "mo" and session["ma_nghien_cuu_cap"]:
             _validate_paired_study(connection, session)
         now = db.bay_gio()

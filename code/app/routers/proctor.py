@@ -51,7 +51,7 @@ def ghi_moc(m: MocMoi, nd: dict = Depends(nguoi_dung_hien_tai)):
     hoc_sinh = access.student_code(nd, m.hoc_sinh)
     access.require_session_assignment(m.ca_thi, nd, "hoc_sinh")
     if m.loai not in TEN_LOAI:
-        raise HTTPException(400, f"Loại dấu hiệu không hợp lệ: {m.loai}")
+        raise HTTPException(400, "Loại dấu hiệu này không hợp lệ.")
     anh = images.require_safe(m.anh)
     with db.ket_noi() as conn:
         session_lifecycle.require_open(conn, m.ca_thi)
@@ -72,7 +72,7 @@ def ghi_moc(m: MocMoi, nd: dict = Depends(nguoi_dung_hien_tai)):
             "SELECT id FROM moc_bat_thuong WHERE ca_thi=? AND hoc_sinh=? AND client_moc_id=?",
             (m.ca_thi, hoc_sinh, m.client_moc_id)).fetchone()
     if not existing:                      # bị bỏ qua vì lý do khác, không phải do gửi trùng
-        raise HTTPException(400, "Không ghi được mốc này")
+        raise HTTPException(400, "Không ghi được dấu hiệu này.")
     return {"da_ghi": True, "moc_id": existing["id"], "trung": True}
 
 
@@ -127,7 +127,7 @@ def lay_anh(moc_id: int, _u: dict = Depends(chi_giao_vien)):
         d = conn.execute("SELECT ca_thi, anh FROM moc_bat_thuong WHERE id = ?",
                          (moc_id,)).fetchone()
     if not d:
-        raise HTTPException(404, "Không tìm thấy mốc")
+        raise HTTPException(404, "Không tìm thấy dấu hiệu này.")
     evidence.require_evidence_unlocked(d["ca_thi"], _u)
     with db.ket_noi() as conn:
         audit.log(conn, _u["ma"], "xem_bang_chung", "moc_bat_thuong",

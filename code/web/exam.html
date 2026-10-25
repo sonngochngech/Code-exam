@@ -119,7 +119,7 @@
     </div>
     <div id="loi-camera" class="cach-nho"></div>
     <div id="trang-thai-san-sang" class="canh-bao-o cach-nho">
-      Camera: chưa kiểm tra · Mô hình: chưa kiểm tra · Kết nối: đang kiểm tra · Toàn màn hình: đang kiểm tra
+      Camera: chưa kiểm tra · Nhận diện khuôn mặt: chưa kiểm tra · Kết nối: đang kiểm tra · Toàn màn hình: đang kiểm tra
     </div>
   </div>
 
@@ -222,7 +222,7 @@
 <button id="nut-ho-tro" class="an" aria-label="Cần hỗ trợ">Cần hỗ trợ</button>
 <div id="bang-ho-tro" class="the an">
   <h3 style="margin-top:0">Yêu cầu hỗ trợ</h3>
-  <p class="mo-nho">Hệ thống tự ghi mã, phòng và thời điểm. Thầy cô sẽ thấy ngay.</p>
+  <p class="mo-nho">Hệ thống tự ghi tên em, lớp và thời điểm gửi. Thầy cô sẽ thấy ngay.</p>
   <div class="o cach-nho">
     <label for="ht-loai">Loại sự cố</label>
     <select id="ht-loai">
@@ -453,8 +453,8 @@ function dungB2(muc) {
         em nhìn ra ngoài màn hình lâu, và em chuyển sang cửa sổ khác.
       </div>
       <div class="canh-bao-o luc cach-nho">
-        <b>Hình ảnh được xử lý ngay trên máy của em.</b> Máy chủ chỉ nhận mốc thời
-        gian kèm một ảnh nhỏ tại đúng lúc có dấu hiệu. Video không được gửi đi đâu
+        <b>Hình ảnh được xử lý ngay trên máy của em.</b> Hệ thống chỉ nhận thời điểm
+        xảy ra kèm một ảnh nhỏ tại đúng lúc có dấu hiệu. Video không được gửi đi đâu
         và không được lưu lại. Hệ thống <b>không kết luận</b> em gian lận, nó chỉ
         đánh dấu để thầy cô xem lại.
       </div>`;
@@ -468,7 +468,7 @@ function dungB2(muc) {
 function hienThiSanSang() {
   const yes = value => value ? "đạt" : "không đạt";
   document.getElementById("trang-thai-san-sang").textContent =
-    `Camera: ${yes(cameraOk)} · Mô hình: ${yes(moHinhOk)} · ` +
+    `Camera: ${yes(cameraOk)} · Nhận diện khuôn mặt: ${yes(moHinhOk)} · ` +
     `Kết nối: ${yes(navigator.onLine)} · Toàn màn hình: ${yes(!!document.fullscreenEnabled)}`;
 }
 async function ghiSanSang(chiTiet = null) {
@@ -637,6 +637,7 @@ function datKhoa(khoa, tieuDe = "", noiDung = "", conDuong = false) {
   document.getElementById("phu-khoa-nut").classList.toggle("an", !conDuong);
   document.querySelectorAll("#ds-cau input").forEach(i => { i.disabled = khoa; });
   document.getElementById("nut-nop").disabled = khoa;
+  document.getElementById("nut-nop").title = khoa ? "Bài thi đang tạm dừng, chờ thầy cô cho tiếp tục" : "";
   document.getElementById("phu-khoa").classList.toggle("an", !khoa);
   document.getElementById("phu-khoa-tieu-de").textContent = tieuDe;
   document.getElementById("phu-khoa-noi-dung").textContent = noiDung;
@@ -710,7 +711,7 @@ async function batCamera() {
   catch (e) {
     moHinhOk = false;
     console.warn("Không nạp được mô hình nhận diện:", e);
-    thongBao("Không tải được mô hình nhận diện. Vẫn làm bài bình thường, " +
+    thongBao("Chưa tải được phần nhận diện khuôn mặt. Em vẫn làm bài bình thường, " +
              "nhưng em báo thầy cô biết nhé.", "loi");
   }
 }
@@ -958,14 +959,14 @@ document.getElementById("nut-xem-lai").onclick = async () => {
     else if (kq.het_han) han.innerHTML =
       '<span class="nhan cam">Đã hết hạn phản hồi. Em có thể nhờ giáo viên gia hạn khi có trở ngại truy cập.</span>';
     else han.innerHTML =
-      `<span class="nhan luc">Còn khoảng ${Math.max(0, Math.round(kq.phut_con_lai))} phút trong thời hạn phản hồi ${kq.phut_phan_hoi} phút.</span>`;
+      `<span class="nhan luc">Em còn khoảng ${dinhDangPhut(Math.max(0, Math.round(kq.phut_con_lai)))} để phản hồi.</span>`;
 
     if (!suKien.length) {
       ds.innerHTML = '<div class="canh-bao-o luc">Hệ thống không ghi nhận dấu hiệu nào ' +
         'cho em trong ca này. Em vẫn có thể gửi ý kiến chung bên dưới.</div>';
     } else {
       ds.innerHTML = '<div class="cuon-ngang"><table><thead><tr><th>Dấu hiệu</th>' +
-        '<th>Thời điểm</th><th>Bằng chứng được phép</th><th>Phản hồi và giải thích</th></tr></thead><tbody>' +
+        '<th>Thời điểm</th><th>Ảnh của em</th><th>Phản hồi và giải thích</th></tr></thead><tbody>' +
         suKien.map((s, i) => `<tr><td>${thoat(s.ten_loai)}</td>
           <td>${dinhDangGiay(s.giay)}</td>
           <td><button class="phu nho" onclick="xemAnhCuaToi(${s.moc_id})">Xem ảnh</button>

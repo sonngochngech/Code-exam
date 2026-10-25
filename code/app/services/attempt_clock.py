@@ -36,7 +36,7 @@ def require_guidance_confirmed(conn, session_id: int, student: str) -> None:
         " WHERE x.ca_thi=? AND x.hoc_sinh=? AND x.dong_y=1"
         " AND x.phien_ban_huong_dan=c.phien_ban_huong_dan", (session_id, student)).fetchone()
     if not ok:
-        raise HTTPException(403, "Em cần hoàn thành hướng dẫn và xác nhận trước khi làm bài")
+        raise HTTPException(403, "Em cần xem hướng dẫn và xác nhận đã hiểu trước khi làm bài.")
 
 
 def require_round_one_open(conn, session_id: int, student: str) -> None:
@@ -136,10 +136,10 @@ def require_working(conn, session_id: int, student: str) -> dict:
     """Gate for actions that mean 'the student is working' (e.g. proctor marks)."""
     state = snapshot(conn, session_id, student)
     if state["trang_thai_ca"] != "mo":
-        raise HTTPException(409, "Ca thi chưa mở hoặc đã đóng")
+        raise HTTPException(409, "Ca thi chưa mở hoặc đã đóng.")
     # A marker queued offline may arrive after submission; that is still valid.
     if state["tam_dung"] and not state["da_nop"]:
-        raise HTTPException(423, "Bài thi đang tạm dừng theo yêu cầu của giáo viên")
+        raise HTTPException(423, "Bài thi đang tạm dừng theo yêu cầu của thầy cô. Em chờ thầy cô cho tiếp tục.")
     return state
 
 
@@ -150,9 +150,9 @@ def require_can_submit(conn, session_id: int, student: str) -> dict:
         return state                       # replay is handled by the caller
     if state["trang_thai_ca"] == "nhap" or (
             state["ca_dong"] and not state["da_bat_dau"]):
-        raise HTTPException(409, "Ca thi chưa mở hoặc đã đóng")
+        raise HTTPException(409, "Ca thi chưa mở hoặc đã đóng.")
     if state["tam_dung"] and not state["ca_dong"]:
-        raise HTTPException(423, "Bài thi đang tạm dừng theo yêu cầu của giáo viên")
+        raise HTTPException(423, "Bài thi đang tạm dừng theo yêu cầu của thầy cô. Em chờ thầy cô cho tiếp tục.")
     if state["qua_han_nop"]:
-        raise HTTPException(409, "Đã hết giờ làm bài, không nhận bài nộp muộn")
+        raise HTTPException(409, "Đã hết giờ làm bài nên hệ thống không nhận bài nộp muộn. Em báo thầy cô để được hỗ trợ.")
     return state

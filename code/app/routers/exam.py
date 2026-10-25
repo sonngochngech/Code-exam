@@ -380,7 +380,7 @@ def dat_phan_cong(ca_id: int, body: PhanCongCa,
         if not session:
             raise HTTPException(404, "Không tìm thấy ca thi")
         if session["trang_thai"] != "nhap":
-            raise HTTPException(409, "Chỉ phân công khi ca còn là bản nháp")
+            raise HTTPException(409, "Ca đã mở nên không đổi phân công được nữa; chỉ đổi được khi ca còn là bản nháp.")
         requested_students = set(body.hoc_sinh)
         requested_teachers = set(body.giao_vien) | {_u["ma"]}
         valid_students = {row["ma"] for row in conn.execute(
@@ -390,7 +390,7 @@ def dat_phan_cong(ca_id: int, body: PhanCongCa,
             "SELECT ma FROM nguoi_dung WHERE vai_tro='giao_vien'"
         ).fetchall()}
         if not requested_students <= valid_students or not requested_teachers <= valid_teachers:
-            raise HTTPException(400, "Mã người dùng hoặc vai trò không hợp lệ")
+            raise HTTPException(400, "Danh sách có tài khoản không phải học sinh hoặc giáo viên. Thầy cô kiểm tra lại danh sách.")
         entries = [(ca_id, code, "hoc_sinh") for code in requested_students]
         entries += [(ca_id, code, "giao_vien") for code in requested_teachers]
         conn.execute("DELETE FROM ca_thi_nguoi_dung WHERE ca_thi=?", (ca_id,))

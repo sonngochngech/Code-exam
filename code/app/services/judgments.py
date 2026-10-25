@@ -10,7 +10,7 @@ def submit(session_id: int, user: dict, round_number: int,
            levels: dict[str, int], notes: dict[str, str]) -> int:
     teacher = evidence.require_teacher_access(session_id, user)
     if round_number not in (1, 2):
-        raise HTTPException(400, "Vòng phải là 1 hoặc 2")
+        raise HTTPException(400, "Chỉ có vòng 1 và vòng 2.")
     if not levels:
         raise HTTPException(400, "Chưa có phán đoán nào")
     if any(not isinstance(value, int) or value < 0 or value > 3

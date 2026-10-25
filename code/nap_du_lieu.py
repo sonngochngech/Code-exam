@@ -18,7 +18,11 @@ def nap_hoc_lieu(duong_dan: str, mon: str) -> None:
     if not f.exists():
         print(f"Không tìm thấy file: {f}")
         return
-    so = rag.nap_hoc_lieu(f, mon)
+    try:
+        so = rag.nap_hoc_lieu(f, mon)
+    except rag.LoiDinhDang as e:
+        print(f"Không nạp được {f.name}: {e}")
+        return
     print(f"Đã nạp {so} đoạn từ {f.name} vào môn {mon}.")
 
 

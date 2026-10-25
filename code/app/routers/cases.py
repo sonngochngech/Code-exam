@@ -67,7 +67,7 @@ def decide(session_id: int, student: str, body: Decision,
     evidence.require_evidence_unlocked(session_id, user)
     reason = body.can_cu.strip()
     if body.trang_thai not in STATUSES:
-        raise HTTPException(400, "Trạng thái kết luận không hợp lệ")
+        raise HTTPException(400, "Thầy cô chọn một kết luận: không vi phạm, cần làm rõ hoặc vi phạm.")
     if not reason:
         raise HTTPException(400, "Kết luận phải có căn cứ")
     with db.ket_noi() as conn:

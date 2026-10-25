@@ -14,6 +14,7 @@ BM25 chấm điểm một đoạn theo ba ý:
 from __future__ import annotations
 
 import math
+import codecs
 import re
 import unicodedata
 import zipfile
@@ -49,6 +50,31 @@ def tach_tu(s: str) -> list[str]:
 # ---------------------------------------------------------------------------
 # Đọc file Word
 # ---------------------------------------------------------------------------
+class LoiDinhDang(ValueError):
+    """Tệp không đọc được vì định dạng hoặc nội dung. Câu thông báo đủ an toàn để hiện cho giáo viên."""
+
+
+GIOI_HAN_GIAI_NEN = 30_000_000        # byte; tệp Word thật hiếm khi vượt vài MB chữ
+
+
+def doc_van_ban(duong_dan: Path) -> str:
+    """Đọc tệp .txt/.md. Nhận UTF-8 (có hoặc không BOM) và UTF-16 có BOM (Notepad chọn "Unicode").
+
+    Bảng mã khác, ví dụ Windows-1258, bị từ chối thay vì đọc lệch: bỏ qua byte lạ sẽ làm mất dấu
+    tiếng Việt mà vẫn báo nạp thành công.
+    """
+    du_lieu = duong_dan.read_bytes()
+    try:
+        if du_lieu.startswith(codecs.BOM_UTF8):
+            return du_lieu[len(codecs.BOM_UTF8):].decode("utf-8")
+        if du_lieu.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+            return du_lieu.decode("utf-16")
+        return du_lieu.decode("utf-8")
+    except UnicodeDecodeError:
+        raise LoiDinhDang("Tệp không phải UTF-8. Thầy cô lưu lại dạng UTF-8 "
+                          "(Notepad: Lưu thành, mục Mã hóa chọn UTF-8) rồi nạp lại.") from None
+
+
 def doc_file_word(duong_dan: Path) -> str:
     """Lấy phần chữ trong file .docx mà không cần cài thư viện ngoài.
 
@@ -56,6 +82,8 @@ def doc_file_word(duong_dan: Path) -> str:
     word/document.xml rồi bóc hết thẻ XML đi là còn lại nội dung.
     """
     with zipfile.ZipFile(duong_dan) as z:
+        if z.getinfo("word/document.xml").file_size > GIOI_HAN_GIAI_NEN:      # tệp nén bom
+            raise LoiDinhDang("Tệp Word quá lớn khi giải nén, hệ thống không đọc được.")
         xml = z.read("word/document.xml").decode("utf-8", errors="ignore")
     xml = re.sub(r"<w:p[ >]", "\n<w:p ", xml)          # mỗi đoạn văn một dòng
     xml = re.sub(r"<w:tab/>", "\t", xml)
@@ -142,9 +170,11 @@ def nap_hoc_lieu(duong_dan: Path, mon: str) -> int:
     if duong_dan.suffix.lower() == ".docx":
         noi_dung = doc_file_word(duong_dan)
     else:
-        noi_dung = duong_dan.read_text(encoding="utf-8", errors="ignore")
+        noi_dung = doc_van_ban(duong_dan)
 
     cac_doan = chia_doan(noi_dung, mon, duong_dan.name)
+    if not cac_doan:
+        raise LoiDinhDang("Tệp không có nội dung để nạp.")
     with db.ket_noi() as conn:
         conn.executemany(
             "INSERT INTO hoc_lieu (mon, chuong, bai, dang_bai, noi_dung, nguon, tao_luc)"

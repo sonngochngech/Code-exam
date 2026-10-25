@@ -108,11 +108,11 @@ def xac_nhan_truoc_thi(x: XacNhanTruoc, nd: dict = Depends(nguoi_dung_hien_tai))
             "SELECT phien_ban_huong_dan FROM ca_thi WHERE id=?", (x.ca_thi,),
         ).fetchone()
         if not session or x.phien_ban_huong_dan != session["phien_ban_huong_dan"]:
-            raise HTTPException(409, "Phiên bản hướng dẫn không còn hiệu lực")
+            raise HTTPException(409, "Hướng dẫn vừa được cập nhật. Em tải lại trang để xem bản mới rồi xác nhận lại.")
         if not (x.da_xem_video or x.da_doc_ban_chu):
-            raise HTTPException(400, "Chưa hoàn thành video hoặc bản chữ hướng dẫn")
+            raise HTTPException(400, "Em xem hết video hoặc đọc bản chữ hướng dẫn trước đã.")
         if not _dung_dap_an(conn, x.ca_thi, x.tra_loi_tinh_huong.get("q1")) or not x.dong_y:
-            raise HTTPException(400, "Chưa hoàn thành kiểm tra hiểu biết và xác nhận")
+            raise HTTPException(400, "Em trả lời đúng câu hỏi tình huống rồi xác nhận nhé.")
         conn.execute(
             "INSERT INTO xac_nhan_truoc_thi (ca_thi, hoc_sinh, da_xem_video, da_doc_ban_chu,"
             " tra_loi_tinh_huong,dong_y,phien_ban_huong_dan,tao_luc) VALUES (?,?,?,?,?,?,?,?)"
@@ -173,7 +173,7 @@ def tao_ho_tro(y: YeuCauHoTro, nd: dict = Depends(nguoi_dung_hien_tai)):
                 (y.moc_id, y.ca_thi, hs),
             ).fetchone()
             if not event:
-                raise HTTPException(400, "Mốc liên kết không thuộc bài làm của học sinh")
+                raise HTTPException(400, "Sự kiện được chọn không thuộc bài làm của em.")
         cur = conn.execute(
             "INSERT INTO yeu_cau_ho_tro (ca_thi, hoc_sinh, lop, loai, noi_dung,"
             " moc_id,giay_trong_bai,trang_thai,tao_luc) VALUES (?,?,?,?,?,?,?,'moi',?)",

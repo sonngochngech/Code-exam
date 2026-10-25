@@ -11,19 +11,19 @@ from . import db
 
 def student_code(user: dict, requested_code: str | None = None) -> str:
     if user.get("vai_tro") != "hoc_sinh":
-        raise HTTPException(403, "Chức năng này dành cho học sinh.")
+        raise HTTPException(403, "Chức năng này chỉ dành cho học sinh.")
     actual = user["ma"]
     if requested_code and requested_code != actual:
-        raise HTTPException(403, "Không được thao tác thay cho học sinh khác.")
+        raise HTTPException(403, "Em chỉ làm bài bằng tài khoản của chính mình.")
     return actual
 
 
 def teacher_code(user: dict, requested_code: str | None = None) -> str:
     if user.get("vai_tro") != "giao_vien":
-        raise HTTPException(403, "Chức năng này dành cho giáo viên.")
+        raise HTTPException(403, "Chức năng này chỉ dành cho giáo viên.")
     actual = user["ma"]
     if requested_code and requested_code != actual:
-        raise HTTPException(403, "Không được thao tác dưới mã giáo viên khác.")
+        raise HTTPException(403, "Thầy cô chỉ thao tác được bằng tài khoản của chính mình.")
     return actual
 
 
@@ -32,7 +32,7 @@ def require_session_assignment(session_id: int, user: dict, role: str | None = N
     expected = role or user.get("vai_tro")
     scoped_session = user.get("ca_thi")
     if expected == "hoc_sinh" and scoped_session is not None and scoped_session != session_id:
-        raise HTTPException(403, "Mã dự thi không có quyền vào ca thi này.")
+        raise HTTPException(403, "Mã dự thi này chỉ dùng cho ca thi được cấp, không vào được ca thi khác.")
     with db.ket_noi() as connection:
         row = connection.execute(
             "SELECT 1 FROM ca_thi_nguoi_dung WHERE ca_thi=? AND nguoi_dung=?"
@@ -40,7 +40,9 @@ def require_session_assignment(session_id: int, user: dict, role: str | None = N
             (session_id, user["ma"], expected),
         ).fetchone()
     if not row:
-        raise HTTPException(403, "Bạn không được phân công vào ca thi này.")
+        if expected == "giao_vien":
+            raise HTTPException(403, "Thầy cô chưa tham gia ca thi này. Bấm Tham gia ở mục Ca của giáo viên khác để cùng phụ trách.")
+        raise HTTPException(403, "Em chưa có tên trong ca thi này. Em hỏi thầy cô phụ trách nhé.")
 
 
 def visible_students_sql() -> str:
@@ -63,5 +65,5 @@ def require_shared_session(teacher: dict, student: str) -> None:
             (student, teacher.get("lop"), teacher["ma"]),
         ).fetchone()
     if not row:
-        raise HTTPException(403, "Học sinh này không thuộc lớp hoặc ca thi bạn phụ trách.")
+        raise HTTPException(403, "Học sinh này không thuộc lớp hoặc ca thi thầy cô phụ trách.")
 
